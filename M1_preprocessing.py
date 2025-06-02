@@ -239,10 +239,11 @@ def gnomad_sample_filtering(mt, sequencingType):
         summary.append(["Call Rate", "-", "-", "-", "Not available"])
 
     # Singletons filtering
-    if "n_singleton" in mt.sample_qc:
+    if "n_singleton" in mt.sample_qc: ## TODO make it work with relative and hard thresholds -- now only samples with
+        # both thresholds are retained, check with abeer
         pre_count = mt.count()
         singleton_stats = mt.aggregate_cols(hl.agg.stats(mt.sample_qc.n_singleton))
-        max_singletons_stdev = 2 * singleton_stats.stdev
+        max_singletons_stdev = 2 * singleton_stats.stdev # relative threshold
         hard_cutoff = config['singletons_WES_threshold'] if sequencingType == "WES" else config['singletons_WGS_threshold']
         mt = mt.filter_cols(
             (mt.sample_qc.n_singleton <= max_singletons_stdev) & (mt.sample_qc.n_singleton <= hard_cutoff))

@@ -1,0 +1,46 @@
+## TODO decide title
+vcf_dir : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read" # all the VCFs in this folder will be converted into a Hail matrix
+vcf_for_header : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read/GCAT-EGAD00001007774-af_annotated.vcf.bgz"  # the final VCF will have parts of this header
+ref_gen : "GRCh37" # reference genome from the VCFs
+mt_from_vcf : "/home/mireia/Bioinfo/Hail_folder/GCAT.mt" # path where the original matrix will be saved
+seq_type : "WGS" # sequencing typw
+mt_afterQC : "/home/mireia/Bioinfo/Hail_folder/GCAT_afterQC.mt" # path where the after QC matrix will be saved
+
+## MODULES TO RUN
+preprocessing : true # if true the module will be run
+ancestry : false
+af_annotation : false
+
+## FUNCTIONS TO RUN
+convert_vcfs : false # if false the module will be run
+split_multiallelic : true
+variant_filtering : true
+sample_filtering : true
+
+## VARIANT FILTERING THRESHOLDS
+QD_threshold : 2.0 # threshold used during the QC
+DP_threshold : 15 
+QUAL_threshold : 30
+MQ_threshold : 40
+FS_threshold : 40
+ReadPosRankSum_threshold : -8.0
+GQ_threshold : 20
+AB_threshold : 0.2
+
+## SAMPLE FILTERING THRESHOLDS
+DP_WGS_threshold : 15
+DP_WES_threshold : 10
+TITV_WGS_threshold : [2.0 , 2.1]
+TITV_WES_threshold : [3.0 , 3.3]
+callRate_threshold : 0.95
+singletons_WGS_threshold : 5000
+singletons_WES_threshold : 100000
+hethom_WES_threshold : 10
+hethom_WGS_threshold : 3.3
+
+## ANCESTRY
+ancestrySNPs : "/home/mireia/GitHub/Hail/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs
+
+## AF RECALC
+final_vcf_QC_AF : "/home/mireia/Bioinfo/Hail_folder/GCAT_AF.vcf.bgz" # path for VCF annotated with AFs
+

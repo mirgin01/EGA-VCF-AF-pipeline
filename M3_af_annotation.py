@@ -23,6 +23,7 @@ config = load_config()
 
 
 def stats_by_sex(mt):
+
     imputed_sex = hl.impute_sex(mt.GT, aaf_threshold=0.05, female_threshold=0.5, male_threshold=0.75)  # Imputed sex with suggested thresholds
     mt = mt.annotate_cols(pheno=imputed_sex[mt.s])  # Annotate matrix table with imputed sex
 

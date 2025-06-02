@@ -22,9 +22,8 @@ def load_config(path="config.yaml"):
 
 config = load_config()
 
-def subset_matrix(mt_path):
+def subset_matrix(mt):
     # load matrix
-    mt = hl.read_matrix_table(mt_path)
     mt = mt.key_rows_by('locus', 'alleles')
 
     # load ancestry SNPs depending on the ref_gen
@@ -48,6 +47,7 @@ def subset_matrix(mt_path):
 
     # export VCF
     print(ancestry_mt.count())
+    mt_path = config['mt_afterQC'] if config['preprocessing'] else config['mt_from_vcf']
     logging.info(f"There are {pre_count} ancestry SNPs in {mt_path}")
     ancestry_vcf = os.path.join(os.path.dirname(mt_path), "ancestrySNPs.vcf")
     logging.info(f"Exporting ancestry matrix to {ancestry_vcf}")
@@ -70,7 +70,7 @@ def call_grafanc(ancestry_vcf, mt_path):
     name_only = os.path.splitext(basename)[0]
     ancestry_results = os.path.join(os.path.dirname(mt_path), f"{name_only}-GrafAnc_results")
     logging.info(f"Running GrafAnc: $ grafanc {ancestry_vcf} {ancestry_results}")
-    os.system(f"grafanc {ancestry_vcf} {ancestry_results}")
+    os.system(f"grafanc {ancestry_vcf} {ancestry_results} --threads 4'")
 
     # update ancestry groups to super populations
     df = pd.read_csv(ancestry_results, sep='\t')
@@ -92,7 +92,6 @@ def call_grafanc(ancestry_vcf, mt_path):
     return ancestry_results
 
 def annotate_ancestry(ancestry_results, mt):
-    mt = hl.read_matrix_table(mt)
     ancestry_table = hl.import_table(ancestry_results, delimiter="\t", impute=True)
     ancestry_table = ancestry_table.select('Sample', 'AncGroupNAME')
     ancestry_table = ancestry_table.key_by('Sample')
