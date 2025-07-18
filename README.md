@@ -1,11 +1,14 @@
-# VCF Processing Workflow
+# VCF Processing Pipeline
 
-This workflow goal is to cobtain a VCF with the Allele Frequencies fields calculated by ancestry and sex. The main modules are:
+This pipeline generates a VCF annotated with allele frequencies stratified by ancestry and sex. It is designed to facilitate downstream analyses that require population-aware frequency data. The pipeline consists of the following main modules:
 
-- Variant, genotype and sample quality control
-- Sex inference
-- Ancestry inference
-- Allele frequencies recalculation and annotation
+- Variant, Genotype, and Sample Quality Control
+
+- Sex Inference
+
+- Ancestry Inference
+
+- Allele Frequency Recalculation and Annotation by Ancestry and Sex
 
 The final output will be a VCF file with all population allele frequencies (`AF`) and supporting metrics annotated:
 
@@ -28,12 +31,56 @@ AC_hom_pop_n_recalc
 AN_pop_n_recalc
 ```
 
-Bear in mind that the original AF values (if present in the input VCF) are NOT deleted, the output VCF will have the original AFs and the recalc ones. 
+**Bear in mind that the original AF values (if present in the input VCF) are NOT deleted, the output VCF will have the original AFs and the recalc ones.**
 
 **Note:**  
 If sex and ancestry cannot be inferred from genomic data, sex-based and ancestry-based grouping will be skipped.
 
-## TODO Insert how to install hail, how to download ddbb for charr
+## Requirements
+
+### 1. Install Hail 
+
+On a recent Debian-like system, the following should suffice
+
+```
+apt-get install -y \
+    openjdk-11-jre-headless \
+    g++ \
+    python3.9 python3-pip \
+    libopenblas-base liblapack3
+python3.9 -m pip install hail
+```
+
+If more information is, please visit [Hail's documentation page](https://hail.is/docs/0.2/getting_started.html).
+
+### 2. Install Required Python Packages
+
+This workflow is written in Python and requires the following additional packages: 
+
+- PyYAML
+- pandas
+
+You can install them using `pip`: 
+
+```
+pip install PyYAML pandas
+```
+
+### 3. CHARR Contamination Filtering Reference
+
+If you plan to run CHARR contamination filtering (recommended), you’ll need to download a reference database.
+
+To check the size and contents of the folder before downloading:
+
+```
+gsutil ls -l gs://gcp-public-data--gnomad/release/2.1.1/ht/genomes/gnomad.genomes.r2.1.1.sites.ht/
+```
+
+To download the reference data: 
+
+```
+gsutil cp -r gs://gcp-public-data--gnomad/release/2.1.1/ht/genomes/gnomad.genomes.r2.1.1.sites.ht/ .
+```
 
 ## Module Overview
 
@@ -218,7 +265,7 @@ local_tmpdir: "./tmp"
 
 ---
 
-✅ **Modular Design:**  
+**Modular Design:**  
 
 Each module and function can be run independently:
 - If a module is set to False, it will be skipped
@@ -231,6 +278,6 @@ Each module and function can be run independently:
 **Once the `conf.py` is adjusted to your needs, you only need to run:**
 
 ```
-python main.py
+python vcf-af-pipeline.py
 ```
-In **[ADD THE LINK TO THE DIAGRAM]** you'll find the different paths your data can follow with this workflow. In purple you'll find highlighted our proposed path, where all the quality control steps are performed, related samples are deleted and ancestry is inferred. 
+In **[ADD THE LINK TO THE DIAGRAM]** you'll find the different paths your data can follow with this pipeline. In purple you'll find highlighted our proposed path, where all the quality control steps are performed, related samples are deleted and ancestry is inferred. 
