@@ -280,4 +280,6 @@ Each module and function can be run independently:
 ```
 python vcf-af-pipeline.py
 ```
-In **[ADD THE LINK TO THE DIAGRAM]** you'll find the different paths your data can follow with this pipeline. In purple you'll find highlighted our proposed path, where all the quality control steps are performed, related samples are deleted and ancestry is inferred. 
+In the pipeline diagram you'll find the different paths your data can follow with this pipeline. In purple you'll find highlighted our proposed path, where all the quality control steps are performed, related samples are deleted and ancestry is inferred. 
+
+![Pipeline Diagram](VCF_EGA_pipeline.png)
