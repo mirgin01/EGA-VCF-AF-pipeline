@@ -14,7 +14,7 @@ hl.init(
         'spark.rpc.askTimeout': config['spark_rpc_askTimeout'],  # Increase timeout for slow operations
         'spark.sql.shuffle.partitions': config['spark_sql_shuffle_partitions'],  # Reduce shuffle partitions for large data
         'spark.memory.fraction': config ['spark_memory_fraction'],  # Use most of the JVM heap for Spark execution
-        'spark.local.dir': config["spark.local.dir"],  # Specify a temp directory for disk spill
+        'spark.local.dir': config["spark_local_dir"],  # Specify a temp directory for disk spill
         'spark.network.timeout': config["spark_network_timeout"],  # Avoid network timeouts
     },
     tmp_dir = config["tmp_dir"],

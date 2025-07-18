@@ -102,7 +102,7 @@ Apply the following quality filters:
 | Depth of Coverage (`DP`)  | `< 15`             | Total sequencing reads supporting the position.                                            |
 | Variant Quality (`QUAL`)  | `< 30`             | Confidence score for the variant.                                                          |
 | Mapping Quality (`MQ`)    | `< 40`             | Read alignment confidence.                                                                 |
-| Fisher Strand Bias (`FS`) | `< 40`             | Measures strand bias in sequencing reads.                                                  |
+| Fisher Strand Bias (`FS`) | `> 60`             | Measures strand bias in sequencing reads.                                                  |
 | Read Position Bias        | `< -8.0`           | Measures whether alleles occur at read ends (potential bias).                              |
 
 *Note:* The VCF must include read-level information (DP, GQ, MQ, FS, etc.) for these filters to work.

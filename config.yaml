@@ -67,14 +67,14 @@ summary_VCF : false # if true the output VCF wont contain ANY information about 
 
 # To work with big datasets allocating the available memory into spark avoids crashes. 
 
-spark_diver_memory: "50g" # Allocate sufficient memory for the driver
+spark_driver_memory: "50g" # Allocate sufficient memory for the driver
 spark_executor_memory : "20g" # Allocate memory for executors
-spark_executor_memory: 4 # Use multiple executors
-spark_executor_cores: 4 # Assign cores per executor
-spark_rpc_askTimeout': "300s" # Increase timeout for slow operations
-spark_sql_shuffle_partitions: 200 # Reduce shuffle partitions for large data
-spark_memory_fraction: 0.8 # Use most of the JVM heap for Spark execution
+spark_executor_instances: "4" # Use multiple executors
+spark_executor_cores: "4" # Assign cores per executor
+spark_rpc_askTimeout: "300s" # Increase timeout for slow operations
+spark_sql_shuffle_partitions: "200" # Reduce shuffle partitions for large data
+spark_memory_fraction: "0.8" # Use most of the JVM heap for Spark execution
 spark_local_dir: "./tmp" # Specify a temp directory for disk spill
-spark_network_timeout: 800s # Avoid network timeouts
+spark_network_timeout: "800s" # Avoid network timeouts
 tmp_dir: "./tmp"
 local_tmpdir: "./tmp"
