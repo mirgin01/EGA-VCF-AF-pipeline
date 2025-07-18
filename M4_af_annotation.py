@@ -1,37 +1,17 @@
 import hail as hl
-import yaml
 import logging
-from csv_utils import *
+from utils import *
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s]: %(message)s",
-    handlers=[
-        logging.FileHandler("output.log", mode='w'),
-        logging.StreamHandler()
-    ]
-)
-
-
-def load_config(path="config.yaml"):
-    with open(path, "r") as file:
-        return yaml.safe_load(file)
-
-
+load_logging()
 config = load_config()
 
-
 def stats_by_sex(mt):
+   
+    results_sex_agg = mt.aggregate_cols(hl.agg.counter(mt.imputed_sex))
 
-    imputed_sex = hl.impute_sex(mt.GT, aaf_threshold=0.05, female_threshold=0.5, male_threshold=0.75)  # Imputed sex with suggested thresholds
-    mt = mt.annotate_cols(pheno=imputed_sex[mt.s])  # Annotate matrix table with imputed sex
-
-    results_sex_agg = mt.aggregate_cols(hl.agg.counter(mt.pheno.is_female))
-
-    num_females = results_sex_agg.get(True, 0)
-    num_males = results_sex_agg.get(False, 0)
-    num_missing = results_sex_agg.get(None, 0)
+    num_females = results_sex_agg.get("female", 0)
+    num_males = results_sex_agg.get("male", 0)
+    num_missing = results_sex_agg.get("undefined", 0)
 
     logging.info(f"Sex Statistics")
     logging.info(f"Number of females: {num_females}")
@@ -43,7 +23,7 @@ def stats_by_sex(mt):
     sex_summary.append(["Number of females", num_females])
     sex_summary.append(["Number of males", num_males])
     sex_summary.append(["Number of samples without sex information:", num_missing])
-    csv_writer(sex_summary, "QCsummary.csv")
+    csv_writer(sex_summary)
 
     return mt, results_sex_agg
 
@@ -62,7 +42,7 @@ def stats_by_ancestry(mt):
     anc_summary.append(["Ancestry statistics"])
     for ancestry, count in results_ancestry_agg.items():
         anc_summary.append([ancestry, count])
-    csv_writer(anc_summary, "QCsummary.csv")
+    csv_writer(anc_summary)
     return mt, results_ancestry_agg
 
 def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
@@ -70,7 +50,7 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
 
     mt = mt.annotate_rows(
         gt_stats=hl.agg.call_stats(mt.GT, mt.alleles), # calculate total AF
-        gt_stats_by_sex=hl.agg.group_by(mt.pheno.is_female, hl.agg.call_stats(mt.GT, mt.alleles)), # calculate by sex AF
+        gt_stats_by_sex=hl.agg.group_by(mt.imputed_sex, hl.agg.call_stats(mt.GT, mt.alleles)), # calculate by sex AF
     )
     # check ancestry field exists before computing ancestry AF
     if 'ancestry' in mt.col:
@@ -86,23 +66,24 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
     AF_sex = {}
     sexes_avail = list(results_sex_agg.keys()) # gets the sexes in the VCF
     for sex in sexes_avail: # create stats by sex
-        if sex is None:
+        if sex is "undefined":
             continue  # Skip samples with unknown sex
-        AF_sex[f"AF_{sex}"] = mt.gt_stats_by_sex[sex].AF[1]
-        AF_sex[f"AC_{sex}"] = mt.gt_stats_by_sex[sex].AC[1]
-        AF_sex[f"AC_hom_{sex}"] = mt.gt_stats_by_sex[sex].homozygote_count[1]
-        AF_sex[f"AN_{sex}"] = mt.gt_stats_by_sex[sex].AN
+        AF_sex[f"AF_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AF[1]
+        AF_sex[f"AC_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AC[1]
+        AF_sex[f"AC_hom_{sex}_recalc"] = mt.gt_stats_by_sex[sex].homozygote_count[1]
+        AF_sex[f"AN_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AN
 
     logging.warning("Samples where sex couldn't be inferred will be ignored")
 
-    if config['ancestry']:
+    if config['ancestry'] and results_ancestry_agg is not "":
         AF_ancestry = {}
         ancestry_avail = list(results_ancestry_agg.keys()) # gets the ancestries in the VCF
+        ## TODO skip samples with unknown ancestry
         for ancestry in ancestry_avail: # create stats by ancestry
-            AF_ancestry[f"AF_{ancestry}"] = mt.gt_stats_by_ancestry[ancestry].AF[1]
-            AF_ancestry[f"AC_{ancestry}"] = mt.gt_stats_by_ancestry[ancestry].AC[1]
-            AF_ancestry[f"AC_hom_{ancestry}"] = mt.gt_stats_by_ancestry[ancestry].homozygote_count[1]
-            AF_ancestry[f"AN_{ancestry}"] = mt.gt_stats_by_ancestry[ancestry].AN
+            AF_ancestry[f"AF_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AF[1]
+            AF_ancestry[f"AC_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AC[1]
+            AF_ancestry[f"AC_hom_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].homozygote_count[1]
+            AF_ancestry[f"AN_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AN
     else:
         AF_ancestry={}
 
@@ -113,10 +94,10 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
 def annotate_new_vcf(mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_ancestry):
     mt_af = mt.annotate_rows(
         info=mt.info.annotate(  # Extend the original info field
-            AF_total=AF_total,
-            AC_total=AC_total,
-            AC_hom_total=AC_hom_total,
-            AN_total=AN_total,
+            AF_total_recalc=AF_total,
+            AC_total_recalc=AC_total,
+            AC_hom_total_recalc=AC_hom_total,
+            AN_total_recalc= AN_total,
             **AF_sex,
             **AF_ancestry
         )
@@ -126,11 +107,24 @@ def annotate_new_vcf(mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_
 
 def export_new_vcf(mt_af):
     header_metadata = hl.get_vcf_metadata(config['vcf_for_header'])  # get original header
-    print("exporting")
-    hl.export_vcf(
-        mt_af,
-        config['final_vcf_QC_AF'],
+    if config['summary_VCF'] == True:
+        logging.info("Exporting final summary VCF with recalculated AF fields and no sample information")
+        # Remove all sample columns
+        variants_table = mt_af.rows()
+        hl.export_vcf(
+        variants_table,
+        config['final_vcf_AF'],
         metadata=header_metadata,
         tabix=True
     )
+
+    else:
+        logging.info("Exporting final VCF with recalculated AF fields and sample information")
+        hl.export_vcf(
+        mt_af,
+        config['final_vcf_AF'],
+        metadata=header_metadata,
+        tabix=True
+        )
+    
 

@@ -1,63 +1,51 @@
-# VCF Processing Workflow for the EGA — Creating a Standard Format
+# VCF Processing Workflow
 
-This workflow aims to standardize VCF files for the European Genome-phenome Archive (EGA).  
-The resulting **VSE** (VCF Standard EGA) files will have undergone:
+This workflow goal is to cobtain a VCF with the Allele Frequencies fields calculated by ancestry and sex. The main modules are:
 
-- Variant and sample quality control
-- Metadata sanity checks (sex and ancestry)
+- Variant, genotype and sample quality control
+- Sex inference
+- Ancestry inference
 - Allele frequencies recalculation and annotation
 
 The final output will be a VCF file with all population allele frequencies (`AF`) and supporting metrics annotated:
 
 ```
-AF_total
-AC_total
-AC_hom_total
-AN_total
-AF_male
-AC_male
-AC_hom_male
-AN_male
-AF_female
-AC_female
-AC_hom_female
-AN_female
-AF_pop_n
-AC_pop_n
-AC_hom_pop_n
-AN_pop_n
+AF_total_recalc
+AC_total_recalc
+AC_hom_total_recalc
+AN_total_recalc
+AF_male_recalc
+AC_male_recalc
+AC_hom_male_recalc
+AN_male_recalc
+AF_female_recalc
+AC_female_recalc
+AC_hom_female_recalc
+AN_female_recalc
+AF_pop_n_recalc
+AC_pop_n_recalc
+AC_hom_pop_n_recalc
+AN_pop_n_recalc
 ```
 
-**Note:**  
-If sex cannot be inferred from genomic data, sex-based grouping will be skipped.
+Bear in mind that the original AF values (if present in the input VCF) are NOT deleted, the output VCF will have the original AFs and the recalc ones. 
 
----
+**Note:**  
+If sex and ancestry cannot be inferred from genomic data, sex-based and ancestry-based grouping will be skipped.
+
+## TODO Insert how to install hail, how to download ddbb for charr
 
 ## Module Overview
 
 ### MODULE 1: Preprocessing
 
-#### Step 1 — Convert VCF to Hail MatrixTable
+#### Step 1: Convert VCF to Hail MatrixTable
 
 Convert all VCF files in a folder into a single Hail MatrixTable for downstream processing.
 
----
+#### Step 2: Split Multi-Allelic Variants
 
-#### Step 2 — Split Multi-Allelic Variants
-
-When exporting to VCF, only the allele frequency (`AF`) of the **first alternative allele** is typically annotated.  
-Hail by default exports all AF values per variant, e.g.:
-
-```
-Variant: 1:1234:A-T  
-AF_total = [0.99, 0.01]  # [reference, alternative]
-```
-
-Since the Beacon protocol only accepts a single AF per variant, multi-allelic variants are **split**. After splitting, the AF for the alternative allele is retained, ensuring accurate Beacon compatibility.
-
----
-
-#### Step 3 — Variant Quality Control
+#### Step 3: Variant Quality Control
 
 Apply the following quality filters:
 
@@ -66,40 +54,53 @@ Apply the following quality filters:
 | Quality by Depth (`QD`)   | `< 2.0`            | Variant quality normalized by depth.                                                       |
 | Depth of Coverage (`DP`)  | `< 15`             | Total sequencing reads supporting the position.                                            |
 | Variant Quality (`QUAL`)  | `< 30`             | Confidence score for the variant.                                                          |
-| Genotype Quality (`GQ`)   | `< 20`             | Confidence in the assigned genotype.                                                       |
 | Mapping Quality (`MQ`)    | `< 40`             | Read alignment confidence.                                                                 |
 | Fisher Strand Bias (`FS`) | `< 40`             | Measures strand bias in sequencing reads.                                                  |
 | Read Position Bias        | `< -8.0`           | Measures whether alleles occur at read ends (potential bias).                              |
-| Allele Balance (`AB`)     | `< 0.2`            | Ratio of alternative reads to total reads.                                                 |
 
 *Note:* The VCF must include read-level information (DP, GQ, MQ, FS, etc.) for these filters to work.
 
----
+#### Step 4: Genotype Quality Control
 
-#### Step 4 — Sample Quality Control
+Apply the following quality filters:
 
-| Metric                     | Threshold                            | Notes                                                |
-|-----------------------------|--------------------------------------|------------------------------------------------------|
-| Minimum Coverage            | `WGS < 15` ; `WES < 10`              | Computed with `hl.sample_qc()` if `DP` or `MIN_DP` exist. |
-| Transition/Transversion Ratio (`Ti/Tv`) | `WGS: ~2.0-2.1`; `WES: ~3.0-3.3` | Computed with `hl.sample_qc()`. |
-| Het/Hom Ratio               | `WGS > 3.3`; `WES > 10`              | Computed with `hl.sample_qc()`. |
-| Call Rate                   | `< 95%`                              | Computed with `hl.sample_qc()`. |
-| Singletons                  | `> 2 SD` or `WGS > 100k`, `WES > 5k` | Computed with `hl.sample_qc()`. |
-| Contamination (CHARR)       | `WGS > 5%`, `WES > 0.015%`           | Estimated using `hl.compute_charr()` *(TODO)*.        |
+| Metric                   | Threshold         | Description                                                                                 |
+|---------------------------|--------------------|---------------------------------------------------------------------------------------------|
+| Genotype Quality (`GQ`)   | `< 20`             | Confidence in the assigned genotype. 
+| Allele Balance (`AB`)     | `< 0.2`            | Ratio of alternative reads to total reads.                                                 |                                                      |
 
----
+*Note:* The VCF must include genotype-level information (GQ and AD) for these filters to work.
 
-### MODULE 2: Ancestry
+#### Step 5: Sample Quality Control
 
-#### Step 5 — Ancestry Inference
+| Metric                                | Threshold                      | Description                                                                                   |
+| ------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------- |
+| Minimum Coverage                      | `WGS < 15 ; WES < 10`            | Minimum acceptable read depth per sample; ensures sufficient coverage.                        |
+| Transition/Transversion Ratio (Ti/Tv) | `WGS: \~2.0–2.1; WES: \~3.0–3.3` | Expected ratio of transitions to transversions, indicating variant quality.                   |
+| Het/Hom Ratio                         | `WGS > 3.3; WES > 10`            | Ratio of heterozygous to homozygous variants; detects abnormal variant patterns.              |
+| Call Rate                             | `< 95%`                       | Proportion of variants successfully genotyped; low values suggest poor-quality samples.       |
+| Singletons                            | `WGS > 100k; WES > 5k `          | Number of variants found only once in the dataset |
+| Contamination (CHARR)                 | `WGS > 5%; WES > 0.015%  `       | Estimate of contamination in the sample.                  |
 
-**5.1 Subset Hail Matrix for Ancestry SNPs**  
+#### Step 6: Sex Inference
+
+Infer sample sex using its genomic information. If sex cannot be determined, sex-based grouping will be skipped.
+
+### MODULE 2: Delete related samples
+
+Including related individuals in a cohort can distort AF calculations
+
+### MODULE 3: Ancestry
+
+#### Ancestry Inference
+
+**Subset Hail Matrix for Ancestry SNPs**  
 Extract ~282,424 ancestry-informative SNPs (if available).
 
-**5.2 Run GRAF-Anc**  
+**Run GRAF-Anc**  
 Use GRAF-Anc for ancestry assignment.
 
-**5.3 Process GRAF-Anc Results**  
+**Process GRAF-Anc Results**  
 GRAF-Anc assigns ancestry at two levels:
 
 - **Continental**
@@ -120,29 +121,9 @@ Only the **continental level** will be used to ensure reliable population taggin
 
 *Note:* GRAF-Anc does **not** tag: Ashkenazi Jewish, Amish, or Finnish populations.
 
----
+If there are not enought ancestry-informative SNPs in the input VCF the ancestry-based grouping will be skipped. 
 
-### MODULE 3: Allele Frequency Recalculation
-
-#### Step 6 — Sex Inference
-
-Infer sample sex using:
-
-```python
-hl.impute_sex()
-```
-
-If sex cannot be determined, sex-based grouping will be skipped.
-
----
-
-#### Step 7 — Ancestry Annotation
-
-Annotate the VCF with GRAF-Anc ancestry assignments and recalculate allele frequencies (`AF`) per ancestry group.
-
----
-
-#### Step 8 — AF Recalculation
+### MODULE 4: Allele Frequency Recalculation
 
 Calculate `AF`, `AC`, `AC_hom`, and `AN` for:
 
@@ -151,72 +132,105 @@ Calculate `AF`, `AC`, `AC_hom`, and `AN` for:
 - Females
 - Each ancestry group
 
----
+And finally, export a single VCFs with all the AF fields annotated. 
 
-#### Step 9 — Export Hail Matrix to VCF
+## HOW TO RUN THE PIPELINE
 
-Convert the processed MatrixTable back into a VCF, with allele frequencies fully annotated.
-
----
-
-## Configuration
-
-All parameters are controlled via `config.yaml`. Example:
+All parameters and module executions are controlled via `config.yaml`. Example:
 
 ```yaml
-## TODO decide title
-vcf_dir : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read" # all the VCFs in this folder will be converted into a Hail matrix
-vcf_for_header : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read/GCAT-EGAD00001007774-af_annotated.vcf.bgz"  # the final VCF will have parts of this header
-ref_gen : "GRCh37" # reference genome from the VCFs
-mt_from_vcf : "/home/mireia/Bioinfo/Hail_folder/GCAT.mt" # path where the original matrix will be saved
-seq_type : "WGS" # sequencing typw
-mt_afterQC : "/home/mireia/Bioinfo/Hail_folder/GCAT_afterQC.mt" # path where the after QC matrix will be saved
+## PATHS
+vcf_dir : " " # all the VCFs in this folder will be converted to a Hail matrix. They must be from the same reference genome.
+ref_gen : " " # reference genome from the VCFs (OPTIONS: GRCh37 / GRCh38)
+mt_from_vcf : " " # path where the original matrix will be saved
+seq_type : " " # sequencing type (OPTIONS: WGS / WES)
+mt_afterQC : " " # path where the after QC matrix will be
+gnomad_sites : "" # path where gnomad.genomes.r2.1.1.sites.ht has been downloaded
+
+## LOGs
+verbosity : true # if true a csv with variants deleted per step will be create. This GREATLY affects the execution time.
+plots: true # create box plot showing the distribuition of each sample QC parameter by sex
 
 ## MODULES TO RUN
-preprocessing : false # if true the module will be run
+preprocessing : true # if true the module will be run
+delete_related: true
 ancestry : true
 af_annotation : true
 
-## FUNCTIONS TO RUN
-convert_vcfs : true # if false the module will be run
+## PREPROCESSING STEPS
+convert_vcfs : true # if true the step will be run
 split_multiallelic : true
+genotype_filtering : true
 variant_filtering : true
 sample_filtering : true
 
 ## VARIANT FILTERING THRESHOLDS
-QD_threshold : 2.0 # threshold used during the QC
-DP_threshold : 15 
-QUAL_threshold : 30
-MQ_threshold : 40
-FS_threshold : 40
-ReadPosRankSum_threshold : -8.0
-GQ_threshold : 20
-AB_threshold : 0.2
+variant_filters:
+  QD_threshold : 2.0 # threshold used during the QC
+  DP_threshold : 15 
+  QUAL_threshold : 40
+  MQ_threshold : 40
+  FS_threshold : 60
+  READPOSRANKSUM_threshold : -8.0
+
+## GENOTYPE FILTERING THRESHOLDS 
+genotype_filters:
+  GQ_threshold : 20
+  AB_threshold : 0.2
 
 ## SAMPLE FILTERING THRESHOLDS
-DP_WGS_threshold : 15
-DP_WES_threshold : 10
-TITV_WGS_threshold : [2.0 , 2.1]
-TITV_WES_threshold : [3.0 , 3.3]
-callRate_threshold : 0.95
-singletons_WGS_threshold : 5000
-singletons_WES_threshold : 100000
-hethom_WES_threshold : 10
-hethom_WGS_threshold : 3.3
+sample_filters:  
+  DP_STATS.MEAN_WGS_threshold : 15
+  DP_STATS.MEAN_WES_threshold : 10
+  CALL_RATE_threshold : 0.95
+  R_HET_HOM_VAR_WES_threshold : 10 
+  R_HET_HOM_VAR_WGS_threshold : 3.3
+  N_SINGLETON_WGS_threshold : 100000
+  N_SINGLETON_WES_threshold : 5000 
+  CHARR_threshold : 0.05
+  R_TI_TV_WES_threshold : [3.0 , 3.3]
+  R_TI_TV_WGS_threshold : [2.0 , 2.1]
 
 ## ANCESTRY
-ancestrySNPs : "/home/mireia/GitHub/Hail/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs
+ancestrySNPs : "path/to/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs (Downloaded when cloning this repo)
 
 ## AF RECALC
-final_vcf_QC_AF : "/home/mireia/Bioinfo/Hail_folder/GCAT_AF.vcf.bgz" # path for VCF annotated with AFs
+final_vcf_AF : " " # path for VCF annotated with AFs
+summary_VCF : false # if true the output VCF wont contain ANY information about the samples and their genotypes
+
+## SPARK CONFIGURATION 
+
+# To work with big datasets allocating the available memory into spark avoids crashes. 
+
+spark_diver_memory: "50g" # Allocate sufficient memory for the driver
+spark_executor_memory : "20g" # Allocate memory for executors
+spark_executor_memory: 4 # Use multiple executors
+spark_executor_cores: 4 # Assign cores per executor
+spark_rpc_askTimeout': "300s" # Increase timeout for slow operations
+spark_sql_shuffle_partitions: 200 # Reduce shuffle partitions for large data
+spark_memory_fraction: 0.8 # Use most of the JVM heap for Spark execution
+spark_local_dir: "./tmp" # Specify a temp directory for disk spill
+spark_network_timeout: 800s # Avoid network timeouts
+tmp_dir: "./tmp"
+local_tmpdir: "./tmp"
+
 ```
 
 ---
 
 ✅ **Modular Design:**  
-Each module and function can be run independently. Thresholds can be adjusted via `config.yaml`.
+
+Each module and function can be run independently:
+- If a module is set to False, it will be skipped
+- If a preprocessing step is set to False it will be skipped
+- Thresholds can be adjusted via `config.yaml`. If a threshold is not set, that filtering step will be skipped. 
 
 ---
 
 
+**Once the `conf.py` is adjusted to your needs, you only need to run:**
 
+```
+python main.py
+```
+In **[ADD THE LINK TO THE DIAGRAM]** you'll find the different paths your data can follow with this workflow. In purple you'll find highlighted our proposed path, where all the quality control steps are performed, related samples are deleted and ancestry is inferred. 

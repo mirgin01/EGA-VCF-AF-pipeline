@@ -1,46 +1,80 @@
-## TODO decide title
-vcf_dir : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read" # all the VCFs in this folder will be converted into a Hail matrix
-vcf_for_header : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read/GCAT-EGAD00001007774-af_annotated.vcf.bgz"  # the final VCF will have parts of this header
+## PATHS
+vcf_dir : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read/" # all the VCFs in this folder must be from the same reference genome
+vcf_for_header : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read/gonl-1-variant.vcf"  # the final VCF will have parts of this header
 ref_gen : "GRCh37" # reference genome from the VCFs
-mt_from_vcf : "/home/mireia/Bioinfo/Hail_folder/GCAT.mt" # path where the original matrix will be saved
+mt_from_vcf : "/home/mireia/Bioinfo/Hail_folder/gonl_subset3000.mt" # path where the original matrix will be saved
 seq_type : "WGS" # sequencing typw
-mt_afterQC : "/home/mireia/Bioinfo/Hail_folder/GCAT_afterQC.mt" # path where the after QC matrix will be saved
+mt_afterQC : "/home/mireia/Bioinfo/Hail_folder/gonl_AFTERQC.mt" # path where the after QC matrix will be
+gnomad_sites : ""
+
+## LOGs
+verbosity : true # if true a csv with variants deleted per step will be create. This GREATLY affects the execution time.
+plots: false # create box plot showing the distribuition of each QC parameter
 
 ## MODULES TO RUN
 preprocessing : true # if true the module will be run
-ancestry : false
-af_annotation : false
+delete_related: false
+ancestry : true
+af_annotation : true
 
-## FUNCTIONS TO RUN
-convert_vcfs : false # if false the module will be run
-split_multiallelic : true
+## PREPROCESSING STEPS
+convert_vcfs : false # if true the module will be run
+split_multiallelic : false
+genotype_filtering : true
 variant_filtering : true
 sample_filtering : true
 
 ## VARIANT FILTERING THRESHOLDS
-QD_threshold : 2.0 # threshold used during the QC
-DP_threshold : 15 
-QUAL_threshold : 30
-MQ_threshold : 40
-FS_threshold : 40
-ReadPosRankSum_threshold : -8.0
-GQ_threshold : 20
-AB_threshold : 0.2
+variant_filters:
+  QD_threshold : 2.0 # threshold used during the QC
+  DP_threshold : 15 
+  QUAL_threshold : 40
+  MQ_threshold : 40
+  FS_threshold : 60
+  READPOSRANKSUM_threshold : -8.0
+
+## GENOTYPE FILTERING THRESHOLDS 
+genotype_filters:
+  GQ_threshold : 20
+  AB_threshold : 0.2
 
 ## SAMPLE FILTERING THRESHOLDS
-DP_WGS_threshold : 15
-DP_WES_threshold : 10
-TITV_WGS_threshold : [2.0 , 2.1]
-TITV_WES_threshold : [3.0 , 3.3]
-callRate_threshold : 0.95
-singletons_WGS_threshold : 5000
-singletons_WES_threshold : 100000
-hethom_WES_threshold : 10
-hethom_WGS_threshold : 3.3
+sample_filters:  
+  DP_STATS.MEAN_WGS_threshold : 10 #15
+  DP_STATS.MEAN_WES_threshold : 5 #10
+  CALL_RATE_threshold : 0.95
+  R_HET_HOM_VAR_WES_threshold : 10 
+  R_HET_HOM_VAR_WGS_threshold : 3.3
+  N_SINGLETON_WGS_threshold : 100000
+  N_SINGLETON_WES_threshold : 5000 
+  CHARR_threshold : 0.05
+  R_TI_TV_WES_threshold : #[3.0 , 3.3]
+  R_TI_TV_WGS_threshold : #[2.0 , 2.1]
+
+## RELATEDNESS
+table_with_subset : "./variants_for_pca.ht"
 
 ## ANCESTRY
-ancestrySNPs : "/home/mireia/GitHub/Hail/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs
+ancestrySNPs : "/home/mireia/GitHub/Hail/workflow/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs
 
 ## AF RECALC
-final_vcf_QC_AF : "/home/mireia/Bioinfo/Hail_folder/GCAT_AF.vcf.bgz" # path for VCF annotated with AFs
+final_vcf_AF : "/home/mireia/Bioinfo/Hail_folder/GCAT_AF.vcf.bgz" # path for VCF annotated with AFs
 
+## EXPORT FINAL VCF
+summary_VCF : false # if true the output VCF wont contain ANY information about the samples and their genotypes
+
+## SPARK CONFIGURATION 
+
+# To work with big datasets allocating the available memory into spark avoids crashes. 
+
+spark_diver_memory: "50g" # Allocate sufficient memory for the driver
+spark_executor_memory : "20g" # Allocate memory for executors
+spark_executor_memory: 4 # Use multiple executors
+spark_executor_cores: 4 # Assign cores per executor
+spark_rpc_askTimeout': "300s" # Increase timeout for slow operations
+spark_sql_shuffle_partitions: 200 # Reduce shuffle partitions for large data
+spark_memory_fraction: 0.8 # Use most of the JVM heap for Spark execution
+spark_local_dir: "./tmp" # Specify a temp directory for disk spill
+spark_network_timeout: 800s # Avoid network timeouts
+tmp_dir: "./tmp"
+local_tmpdir: "./tmp"
