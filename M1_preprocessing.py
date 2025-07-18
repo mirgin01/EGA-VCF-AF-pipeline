@@ -351,21 +351,21 @@ def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields 
     mt = hl.sample_qc(mt)
 
     # Compute CHARR
-    """if "AF" in mt.info:
+    if "AF" in mt.info:
         gnomad_sites = hl.read_table(config['gnomad_sites'])
         charr_result = hl.compute_charr(
             mt,
             ref_AF=(1 - gnomad_sites[mt.row_key].freq[0].AF)
         )
         #annotate charr results
-        mt = mt.annotate_cols(charr=charr_result[mt.col_key].charr)"""
+        mt = mt.annotate_cols(charr=charr_result[mt.col_key].charr)
 
 
     config['verbosity'] = True
 
-    if config["plots"]:
+    """if config["plots"]:
         logging.info("Creating Sample Filters plots")
-        create_sample_plot(mt)
+        create_sample_plot(mt)"""
 
     if config['verbosity']:
         summary = []
@@ -450,7 +450,7 @@ def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields 
 
     # CHARR filtering 
        
-    """
+    
     if config['sample_filters']['CHARR_threshold'] is not None:
         try:
             if config['verbosity']:
@@ -467,7 +467,7 @@ def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields 
                 logging.info("CHARR filtering done")
         except TypeError:
             logging.info("CHARR couldn't be calculated")
-            summary.append(["CHARR", "-", "-", "-", "Not available"])"""
+            summary.append(["CHARR", "-", "-", "-", "Not available"])
 
 
     # Het/Hom ratio filtering

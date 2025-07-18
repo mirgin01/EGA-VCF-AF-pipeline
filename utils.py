@@ -57,8 +57,6 @@ def create_sample_plot(mt):
 
     sample_thresholds = config['sample_filters']
 
-    print(sample_thresholds)
-
     table = mt.cols().select('sample_qc', 'imputed_sex', 'charr')
     df = table.to_pandas()
 

@@ -196,7 +196,7 @@ gnomad_sites : "" # path where gnomad.genomes.r2.1.1.sites.ht has been downloade
 
 ## LOGs
 verbosity : true # if true a csv with variants deleted per step will be create. This GREATLY affects the execution time.
-plots: true # create box plot showing the distribuition of each sample QC parameter by sex
+
 
 ## MODULES TO RUN
 preprocessing : true # if true the module will be run
