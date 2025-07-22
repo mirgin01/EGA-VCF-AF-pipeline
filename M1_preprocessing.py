@@ -433,10 +433,10 @@ def sample_filtering(mt, sequencingType):
             summary.append(["Call Rate", "-", "-", "-", "Not available"])
             logging.info("Call rate information not available")
 
-    # Singletons filtering
-    if config['sample_filters']['N_SINGLETON_WES_threshold'] is not None or config['sample_filters']['R_TI_TV_WGS_threshold'] is not None:
-        if "n_singleton" in mt.sample_qc: 
 
+    # Singletons filtering
+    if config['sample_filters']['N_SINGLETON_WES_threshold'] is not None or config['sample_filters']['N_SINGLETON_WGS_threshold'] is not None:
+        if "n_singleton" in mt.sample_qc: 
             hard_cutoff = config['sample_filters']['N_SINGLETON_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['N_SINGLETON_WGS_threshold']
             if config['verbosity']:
                 stats = create_stats(mt, "sample_qc.n_singleton", "cols")

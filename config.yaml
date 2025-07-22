@@ -12,9 +12,9 @@ verbosity : true # if true a csv with variants deleted per step will be create. 
 plots: false # create box plot showing the distribuition of each QC parameter
 
 ## MODULES TO RUN
-preprocessing : false # if true the module will be run
+preprocessing : true # if true the module will be run
 delete_related: false
-ancestry : true
+ancestry : false
 af_annotation : false
 
 ## PREPROCESSING STEPS
@@ -40,14 +40,14 @@ genotype_filters:
 
 ## SAMPLE FILTERING THRESHOLDS
 sample_filters:  
-  DP_STATS.MEAN_WGS_threshold : 10 #15
-  DP_STATS.MEAN_WES_threshold : 5 #10
+  DP_STATS.MEAN_WGS_threshold : 15
+  DP_STATS.MEAN_WES_threshold : 10
   CALL_RATE_threshold : 0.95
   R_HET_HOM_VAR_WES_threshold : 10 
   R_HET_HOM_VAR_WGS_threshold : 3.3
   N_SINGLETON_WGS_threshold : 100000
   N_SINGLETON_WES_threshold : 5000 
-  CHARR_threshold : #0.05
+  CHARR_threshold : 0.05
   R_TI_TV_WES_threshold : [3.0 , 3.3]
   R_TI_TV_WGS_threshold : [2.0 , 2.1]
 
