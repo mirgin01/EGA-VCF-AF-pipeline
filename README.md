@@ -195,7 +195,7 @@ mt_afterQC : " " # path where the after QC matrix will be
 gnomad_sites : "" # path where gnomad.genomes.r2.1.1.sites.ht has been downloaded
 
 ## LOGs
-verbosity : true # if true a csv with variants deleted per step will be create. This GREATLY affects the execution time.
+verbosity : true # if true a csv with variants deleted per step will be create. This increases the execution time.
 
 
 ## MODULES TO RUN

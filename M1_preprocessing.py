@@ -5,11 +5,14 @@ from utils import *
 from hail.ggplot import ggplot, aes, labs
 
 
-load_logging()
 config = load_config()
 
 def convert_and_merge_vcfs(vcf_dir, mt_from_vcf, reference_genome):
-
+    """
+    Convert all the VCFs in a folder to a SINGLE hail matrix
+    :params: directory where the VCFs are saved, path where the hail matrix will be saved, reference genome from the VCFs
+    :return: Hail matrix with the genomic data converted
+    """
     # Get all VCF file paths in the directory
     vcfs = sorted([
         os.path.join(vcf_dir, f)
@@ -43,6 +46,11 @@ def convert_and_merge_vcfs(vcf_dir, mt_from_vcf, reference_genome):
 
 
 def impute_sex(mt):
+    """
+    Imputes sex for all the samples
+    :params: Imputes sex with original data
+    :return: Imputed sex by sample
+    """
     
     imputed_sex = hl.impute_sex(mt.GT, aaf_threshold=0.05, female_threshold=0.5, male_threshold=0.75)  # Imputed sex with suggested thresholds
     sex_expr = hl.if_else(hl.is_defined(imputed_sex.is_female), hl.if_else(imputed_sex.is_female, # rename imputed sex
@@ -62,6 +70,11 @@ def impute_sex(mt):
     return mt 
 
 def split_multiallelic(mt, original_size):
+    """
+    Splits multiallelic variants
+    :params: mt without qc, original size to avoid recalculating
+    :return: mt without multiallelic variants
+    """
     summary = []
     summary.append(["Split multiallelic variants"])
     summary.append(["", "Before", "After"])
@@ -77,7 +90,11 @@ def split_multiallelic(mt, original_size):
     return mt
 
 def genotype_filtering(mt):
-
+    """
+    Applies genotype quality control based on the thresholds stated in config.yaml
+    :params: mt without genotype qc
+    :return: mt with genotypes QCed
+    """
     # Store filtering summary
     summary = []
     summary.append([])
@@ -210,7 +227,11 @@ def genotype_filtering(mt):
 
 
 def variant_filtering(mt):
-    
+    """
+    Applies variant quality control based on the thresholds stated in config.yaml
+    :params: mt without variant qc
+    :return: mt with variant QCed
+    """   
     mt = hl.variant_qc(mt)
    
     # Store filtering summary
@@ -223,39 +244,32 @@ def variant_filtering(mt):
     # Variant quality control
     
     if config['variant_filters']['QD_threshold'] is not None:
+        
         if "QD" in mt.info:
+            
             if config['verbosity']:
-                pre_count = mt.count_rows()
-                stats = create_stats(mt, "info.QD", "rows")
-                
-            mt = mt.filter_rows(mt.info.QD >= config['variant_filters']['QD_threshold'])
+                stats = create_stats(mt, "info.QD", "rows")            
+                summary = verbosity_counts_variants(mt, "QD", mt.info.QD >= config['variant_filters']['QD_threshold'], summary, stats)                      
 
-            if config['verbosity']:
-                post_count = mt.count_rows()
-                removed = pre_count - post_count
-                logging.info(f"QD filtering done - Variants removed: {removed}  ")
-                summary.append(["QD", pre_count, post_count, removed, stats])
-            else:
-                logging.info("QD filtering done")
+            # actually apply the filter to the mt
+            mt = mt.filter_rows(mt.info.QD >= config['variant_filters']['QD_threshold'])
+            logging.info("QD filtering done")
+        
         else:
             logging.info("QD information not available")
             summary.append(["QD", "-", "-", "-", "Not available"])
     
     if config['variant_filters']['DP_threshold'] is not None:
+        
         if "DP" in mt.info:
-            if config['verbosity']:
-                pre_count = mt.count_rows()
-                stats = create_stats(mt, "info.DP", "rows")
-
-            mt = mt.filter_rows(mt.info.DP >= config['variant_filters']['DP_threshold'])
             
             if config['verbosity']:
-                post_count = mt.count_rows()
-                removed = pre_count - post_count
-                logging.info(f"DP filtering done - Variants removed: {removed}  ")
-                summary.append(["DP", pre_count, post_count, removed, stats])
-            else:
-                logging.info("DP filtering done")
+                stats = create_stats(mt, "info.DP", "rows")
+                summary = verbosity_counts_variants(mt, "DP", mt.info.DP >= config['variant_filters']['DP_threshold'], summary, stats)
+
+            mt = mt.filter_rows(mt.info.DP >= config['variant_filters']['DP_threshold'])       
+            logging.info("DP filtering done")   
+            
         else:
             logging.info("DP information not available")
             summary.append(["DP", "-", "-", "-", "Not available"])
@@ -263,18 +277,13 @@ def variant_filtering(mt):
     if config['variant_filters']['QUAL_threshold'] is not None:
         try:
             if config['verbosity']:
-                pre_count = mt.count_rows()
+
                 stats = create_stats(mt, "qual", "rows")
+                summary = verbosity_counts_variants(mt, "QUAL", mt.qual >= config['variant_filters']['QUAL_threshold'], summary, stats)
             
             mt = mt.filter_rows(mt.qual >= config['variant_filters']['QUAL_threshold'])
-            
-            if config['verbosity']:
-                post_count = mt.count_rows()
-                removed = pre_count - post_count
-                logging.info(f"QUAL filtering done - Variants removed: {removed}    ")
-                summary.append(["QUAL", pre_count, post_count, removed, stats])
-            else:
-                logging.info("QUAL filtering done")
+            logging.info("QUAL filtering done")
+        
         except TypeError:
             logging.info("QUAL information not available")
             summary.append(["QUAL", "-", "-", "-", "Not available"])
@@ -282,18 +291,11 @@ def variant_filtering(mt):
     if config['variant_filters']['MQ_threshold'] is not None:
         if "MQ" in mt.info:
             if config['verbosity']:
-                pre_count = mt.count_rows()
                 stats = create_stats(mt, "info.MQ", "rows")
-            
+                summary = verbosity_counts_variants(mt, "MQ", mt.info.MQ >= config['variant_filters']['MQ_threshold'], summary, stats)
+               
             mt = mt.filter_rows(mt.info.MQ >= config['variant_filters']['MQ_threshold'])
-            
-            if config['verbosity']:
-                post_count = mt.count_rows()
-                removed = pre_count - post_count
-                logging.info(f"MQ filtering done - Variants removed: {removed}  ")
-                summary.append(["MQ", pre_count, post_count, removed, stats])
-            else:
-                logging.info("MQ filtering done")
+            logging.info("MQ filtering done")
         else:
             logging.info("MQ information not available")
             summary.append(["MQ", "-", "-", "-", "Not available"])
@@ -301,18 +303,11 @@ def variant_filtering(mt):
     if config['variant_filters']['FS_threshold'] is not None:
         if "FS" in mt.info:
             if config['verbosity']:
-                pre_count = mt.count_rows()
                 stats = create_stats(mt, "info.FS", "rows")
+                summary = verbosity_counts_variants(mt, "FS", mt.info.FS <= config['variant_filters']['FS_threshold'], summary, stats)
 
             mt = mt.filter_rows(mt.info.FS <= config['variant_filters']['FS_threshold'])
-            
-            if config['verbosity']:
-                post_count = mt.count_rows()
-                removed = pre_count - post_count
-                logging.info(f"FS filtering done - Variants removed: {removed}  ")
-                summary.append(["FS", pre_count, post_count, removed, stats])
-            else:
-                logging.info("FS filtering done")
+            logging.info("FS filtering done")
         else:
             logging.info("FS information not available")
             summary.append(["FS", "-", "-", "-", "Not available"])
@@ -320,18 +315,11 @@ def variant_filtering(mt):
     if config['variant_filters']['READPOSRANKSUM_threshold'] is not None:
         if "ReadPosRankSum" in mt.info:
             if config['verbosity']:
-                pre_count = mt.count_rows()
                 stats = create_stats(mt, "info.ReadPosRankSum", "rows")
+                summary = verbosity_counts_variants(mt, "ReadPosRankSum", mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'], summary, stats)
             
             mt = mt.filter_rows(mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
-            
-            if config['verbosity']:
-                post_count = mt.count_rows()
-                removed = pre_count - post_count
-                logging.info(f"ReadPosRankSum filtering done - Variants removed: {removed}  ")
-                summary.append(["ReadPosRankSum", pre_count, post_count, removed, stats])
-            else:
-                logging.info("ReadPosRankSum filtering done")
+            logging.info("ReadPosRankSum filtering done")
         else:
             logging.info("ReadPosRankSum information not available")
             summary.append(["ReadPosRankSum", "-", "-", "-", "Not available"])
@@ -342,8 +330,12 @@ def variant_filtering(mt):
     return mt
 
 
-def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields as in sample and genotype
-
+def sample_filtering(mt, sequencingType): 
+    """
+    Applies sample quality control based on the thresholds stated in config.yaml
+    :params: mt without sample qc
+    :return: mt with sample QCed
+    """
     # ensure the sequencing type entered in conf.py is valid
     assert sequencingType in ["WES", "WGS"], "sequencingType must be 'WES' or 'WGS'"
 
@@ -351,21 +343,23 @@ def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields 
     mt = hl.sample_qc(mt)
 
     # Compute CHARR
-    if "AF" in mt.info:
-        gnomad_sites = hl.read_table(config['gnomad_sites'])
-        charr_result = hl.compute_charr(
-            mt,
-            ref_AF=(1 - gnomad_sites[mt.row_key].freq[0].AF)
-        )
-        #annotate charr results
-        mt = mt.annotate_cols(charr=charr_result[mt.col_key].charr)
-
+    if not config.get('gnomad_sites') or config['gnomad_sites'].strip() == '':
+        logging.error("gnomAD sites path is empty or not configured - check your conf.py")
+    else: 
+        if "AF" in mt.info:
+            gnomad_sites = hl.read_table(config['gnomad_sites'])
+            charr_result = hl.compute_charr(
+                mt,
+                ref_AF=(1 - gnomad_sites[mt.row_key].freq[0].AF)
+            )
+            #annotate charr results
+            mt = mt.annotate_cols(charr=charr_result[mt.col_key].charr)
 
     config['verbosity'] = True
 
-    """if config["plots"]:
+    if config["plots"]:
         logging.info("Creating Sample Filters plots")
-        create_sample_plot(mt)"""
+        create_sample_plot(mt)
 
     if config['verbosity']:
         summary = []
@@ -376,35 +370,45 @@ def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields 
     # Minimum coverage filtering
     if config['sample_filters']['DP_STATS.MEAN_WES_threshold'] is not None or config['sample_filters']['DP_STATS.MEAN_WGS_threshold'] is not None:
         if "dp_stats" in mt.sample_qc:
-            if config['verbosity']:
-                pre_count = mt.count()
-                stats = create_stats(mt, "sample_qc.dp_stats.mean", "cols")
-            
+            # get correct threshold 
             min_coverage = config['sample_filters']['DP_STATS.MEAN_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['DP_STATS.MEAN_WGS_threshold']
-            mt = mt.filter_cols(mt.sample_qc.dp_stats.mean >= min_coverage)
             
             if config['verbosity']:
-                post_count = mt.count()
-                summary.append(["Minimum Coverage", pre_count[1], post_count[1], pre_count[1] - post_count[1], stats])
-                logging.info(f"{sequencingType} coverage filtering done - Samples removed: {pre_count[1] - post_count[1]}   ")
-            else:
-                logging.info("DP filtering done")
+                stats = create_stats(mt, "sample_qc.dp_stats.mean", "cols")
+                repo_stats = mt.aggregate_cols(hl.struct(
+                            total = hl.agg.count(),
+                            passing=hl.agg.count_where(mt.sample_qc.dp_stats.mean >= min_coverage)
+                            )
+                )   
+            logging.info(f"Minimum Coverage filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            summary.append(["Minimum Coverage", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
+            
+            mt = mt.filter_cols(mt.sample_qc.dp_stats.mean >= min_coverage)
+            logging.info("DP filtering done")
+        
         else:
             summary.append(["Minimum Coverage", "-", "-", "-", "Not available"])
             logging.info("DP information not available")
 
     # ti/tv ratio filtering
     if config['sample_filters']['R_TI_TV_WES_threshold'] is not None or config['sample_filters']['R_TI_TV_WGS_threshold'] is not None:
+        
+        lower, upper = config['sample_filters']['R_TI_TV_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['R_TI_TV_WGS_threshold']
+        
         if "r_ti_tv" in mt.sample_qc:
             if config['verbosity']:
-                pre_count = mt.count()
                 stats = create_stats(mt, "sample_qc.r_ti_tv", "cols")
-            lower, upper = config['sample_filters']['R_TI_TV_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['R_TI_TV_WGS_threshold']
+                repo_stats = mt.aggregate_cols(hl.struct(
+                            total = hl.agg.count(),
+                            passing=hl.agg.count_where((mt.sample_qc.r_ti_tv >= lower) & (mt.sample_qc.r_ti_tv <= upper))
+                            )
+                )   
+            logging.info(f"Ti/Tv ratio filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            summary.append(["Ti/Tv ratio", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
+            
             mt = mt.filter_cols((mt.sample_qc.r_ti_tv >= lower) & (mt.sample_qc.r_ti_tv <= upper))
-            if config['verbosity']:
-                post_count = mt.count()
-                summary.append(["Ti/Tv Ratio", pre_count[1], post_count[1], pre_count[1] - post_count[1], stats])
-                logging.info(f"{sequencingType} ti/tv filtering done — Samples removed: {pre_count[1] - post_count[1]}")
+            logging.info("Ti/Tv ratio filtering done")
+            
         else:
             summary.append(["Ti/Tv Ratio", "-", "-", "-", "Not available"])
             logging.info("Ti/Tv information not available")
@@ -413,16 +417,18 @@ def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields 
     if config['sample_filters']['CALL_RATE_threshold'] is not None: 
         if "call_rate" in mt.sample_qc:
             if config['verbosity']:
-                pre_count = mt.count()
                 stats = create_stats(mt, "sample_qc.call_rate", "cols")
+                repo_stats = mt.aggregate_cols(hl.struct(
+                            total = hl.agg.count(),
+                            passing=hl.agg.count_where(mt.sample_qc.call_rate >= config['sample_filters']['CALL_RATE_threshold'])
+                            )
+                )   
+            logging.info(f"Call rate filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            summary.append(["Call rate", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
 
             mt = mt.filter_cols(mt.sample_qc.call_rate >= config['sample_filters']['CALL_RATE_threshold'])
-            if config['verbosity']:    
-                post_count = mt.count()
-                summary.append(["Call Rate", pre_count[1], post_count[1], pre_count[1] - post_count[1], stats] )
-                logging.info(f"Call rate filtering done - Samples removed: {pre_count[1] - post_count[1]}"  )
-            else:
-                logging.info("Call rate filtering done")
+            logging.info("Call rate filtering done")
+        
         else:
             summary.append(["Call Rate", "-", "-", "-", "Not available"])
             logging.info("Call rate information not available")
@@ -430,41 +436,41 @@ def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields 
     # Singletons filtering
     if config['sample_filters']['N_SINGLETON_WES_threshold'] is not None or config['sample_filters']['R_TI_TV_WGS_threshold'] is not None:
         if "n_singleton" in mt.sample_qc: 
-            if config['verbosity']:
-                pre_count = mt.count()
-                stats = create_stats(mt, "sample_qc.n_singleton", "cols")
 
             hard_cutoff = config['sample_filters']['N_SINGLETON_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['N_SINGLETON_WGS_threshold']
-            mt = mt.filter_cols(mt.sample_qc.n_singleton <= hard_cutoff)
-            
             if config['verbosity']:
-                post_count = mt.count()
-                summary.append(["Singletons", pre_count[1], post_count[1], pre_count[1] - post_count[1], stats])
-                logging.info(f"Singleton filtering done - Samples removed: {pre_count[1] - post_count[1]}   ")
-            else:
-                logging.info("Singleton filtering done")
+                stats = create_stats(mt, "sample_qc.n_singleton", "cols")
+                repo_stats = mt.aggregate_cols(hl.struct(
+                            total = hl.agg.count(),
+                            passing=hl.agg.count_where(mt.sample_qc.n_singleton <= hard_cutoff)
+                            )
+                )   
+            logging.info(f"Singletons filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            summary.append(["Singletons", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
+
+            mt = mt.filter_cols(mt.sample_qc.n_singleton <= hard_cutoff)
+            logging.info("Singleton filtering done")
         else:
             summary.append(["Singletons", "-", "-", "-", "Not available"])
             logging.info("Number of singletons not available")
 
 
     # CHARR filtering 
-       
     
     if config['sample_filters']['CHARR_threshold'] is not None:
         try:
             if config['verbosity']:
-                pre_count = mt.count_rows()
                 stats = create_stats(mt, "charr", "cols")
+                repo_stats = mt.aggregate_cols(hl.struct(
+                            total = hl.agg.count(),
+                            passing=hl.agg.count_where(mt.charr <= config['sample_filters']['CHARR_threshold'])
+                            )
+                )   
+            logging.info(f"CHARR filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            summary.append(["CHARR", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
                 
             mt = mt.filter_cols(mt.charr <= config['sample_filters']['CHARR_threshold']) # Filter samples with charr over the threshold
-            
-            if config['verbosity']:
-                post_count = mt.count()
-                logging.info(f"CHARR filtering done - Samples removed: {pre_count[1] - post_count[1]}   ")
-                summary.append(["CHARR", pre_count[1], post_count[1], pre_count[1] - post_count[1], stats])  
-            else: 
-                logging.info("CHARR filtering done")
+            logging.info("CHARR filtering done")
         except TypeError:
             logging.info("CHARR couldn't be calculated")
             summary.append(["CHARR", "-", "-", "-", "Not available"])
@@ -473,26 +479,24 @@ def sample_filtering(mt, sequencingType): ## TODO print stats about qual fields 
     # Het/Hom ratio filtering
     if config['sample_filters']['R_HET_HOM_VAR_WES_threshold'] is not None or config['sample_filters']['R_HET_HOM_VAR_WGS_threshold'] is not None:
         if "GT" in mt.entry:
-            if config['verbosity']:
-                pre_count = mt.count()
-                stats = create_stats(mt, "sample_qc.r_het_hom_var", "cols")
-            
             hard_cutoff = config['sample_filters']['R_HET_HOM_VAR_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['R_HET_HOM_VAR_WGS_threshold']
-            mt = mt.filter_cols(mt.sample_qc.r_het_hom_var <= hard_cutoff)
-            
             if config['verbosity']:
-                post_count = mt.count()
-                summary.append(["Het/Hom Ratio", pre_count[1], post_count[1], pre_count[1] - post_count[1], stats])
-
-                logging.info(f"{sequencingType} het/hom filtering done - Samples removed: {pre_count[1] - post_count[1]}    ")
-            else:
-                logging.info("Het/Hom ratio filtering done")
+                stats = create_stats(mt, "sample_qc.r_het_hom_var", "cols")
+                repo_stats = mt.aggregate_cols(hl.struct(
+                            total = hl.agg.count(),
+                            passing=hl.agg.count_where(mt.sample_qc.r_het_hom_var <= hard_cutoff)
+                            )
+                )   
+                logging.info(f"Het/Hom ratio filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+                summary.append(["Het/Hom ratio", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
+                
+            mt = mt.filter_cols(mt.sample_qc.r_het_hom_var <= hard_cutoff)
+            logging.info("Het/Hom ratio filtering done")
         else:
             summary.append(["Het/Hom Ratio", "-", "-", "-", "Not available"])
             logging.info("Het/Hom ratio information not available")
 
     if config['verbosity']:
-        # Write CSV
         csv_writer(summary)
     
     return mt

@@ -12,16 +12,16 @@ verbosity : true # if true a csv with variants deleted per step will be create. 
 plots: false # create box plot showing the distribuition of each QC parameter
 
 ## MODULES TO RUN
-preprocessing : true # if true the module will be run
+preprocessing : false # if true the module will be run
 delete_related: false
 ancestry : true
-af_annotation : true
+af_annotation : false
 
 ## PREPROCESSING STEPS
 convert_vcfs : false # if true the module will be run
 split_multiallelic : false
-genotype_filtering : true
-variant_filtering : true
+genotype_filtering : false
+variant_filtering : false
 sample_filtering : true
 
 ## VARIANT FILTERING THRESHOLDS
@@ -47,9 +47,9 @@ sample_filters:
   R_HET_HOM_VAR_WGS_threshold : 3.3
   N_SINGLETON_WGS_threshold : 100000
   N_SINGLETON_WES_threshold : 5000 
-  CHARR_threshold : 0.05
-  R_TI_TV_WES_threshold : #[3.0 , 3.3]
-  R_TI_TV_WGS_threshold : #[2.0 , 2.1]
+  CHARR_threshold : #0.05
+  R_TI_TV_WES_threshold : [3.0 , 3.3]
+  R_TI_TV_WGS_threshold : [2.0 , 2.1]
 
 ## RELATEDNESS
 table_with_subset : "./variants_for_pca.ht"

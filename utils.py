@@ -7,21 +7,31 @@ import seaborn as sns
 from datetime import datetime
 import os 
 
-def get_name():
-    ## TODO create folder and save every output file there 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))  # create name for results file
-    name_only = f"{os.path.splitext(basename)[0]}_{timestamp}"
+# Generate timestamp once when module is imported
+_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+_name_only = None 
 
-    return name_only
+def get_name():
+    """
+    Checks if name_only has been created. If not, create a global variable for the log and workflow name
+    :return: _name_only global variable
+    """
+    global _name_only
+    if _name_only is None:
+        basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))  
+        _name_only = f"{os.path.splitext(basename)[0]}_{_timestamp}"
+        print(_name_only)
+    
+    return _name_only
  
 def csv_creator():
     """
     Create CSV and add proper header
-    :param output_csv:
     :return: csv with header and ready to be added new rows
     """
     config['csv_filename'] = f"WorkflowStats_{get_name()}.csv"
+
+    logging.info(f"Writing CSV with step statistics: WorkflowStats_{get_name()}.csv")
     
     with open(config['csv_filename'], mode="w", newline="") as file:
         writer = csv.writer(file)
@@ -30,17 +40,30 @@ def csv_creator():
 
 
 def csv_writer(new_row):
-    
+    """
+    add info to csv created in csv_creator
+    :params: new row to be added to csv
+    :return: csv with new rows
+    """
     with open(config['csv_filename'], mode="a", newline="") as file:
         writer = csv.writer(file)
         for row in new_row:
             writer.writerow(row)
 
 def load_config(path="config.yaml"):
+    """
+    Load config with pipeline parameters
+    :params: path of the conf.yaml
+    :return: config parameters will be available
+    """
     with open(path, "r") as file:
         return yaml.safe_load(file)           
 
 def load_logging():
+    """
+    Create log file 
+    :return: log file with all the outputs
+    """
     name_only = get_name()
     
     # Configure logging
@@ -52,53 +75,79 @@ def load_logging():
             logging.StreamHandler()
         ]
     )
+    logging.info(f"LOG SAVED IN: {name_only}.log")
 
 def create_sample_plot(mt): 
-
+    """
+    Creates plots of the sample quality control metrics, grouped by sex and with the proper thresholds. 
+    :params: mt without the sample quality control applied
+    :return: boxplot for all the available sample quality control metrics. 
+    """
     sample_thresholds = config['sample_filters']
 
-    table = mt.cols().select('sample_qc', 'imputed_sex', 'charr')
-    df = table.to_pandas()
+    try: 
+        table = mt.cols().select('sample_qc', 'imputed_sex', 'charr')
+        df = table.to_pandas()
 
-    # List of metrics to plot ## TODO make it work when not all the fields are available 
-    stats = ['sample_qc.dp_stats.mean', 'sample_qc.call_rate',
-             'sample_qc.r_het_hom_var', 'sample_qc.n_singleton', 'charr', 'sample_qc.r_ti_tv']
+    except LookupError as e: # if charr is not computed
+        table = mt.cols().select('sample_qc', 'imputed_sex')
+        df = table.to_pandas()
+    
+        stats = ['sample_qc.dp_stats.mean', 'sample_qc.call_rate',
+                'sample_qc.r_het_hom_var', 'sample_qc.n_singleton', 'charr', 'sample_qc.r_ti_tv']
 
-    for metric in stats: 
-        plt.figure()
-
-        # Plot boxplot
-        df.boxplot(column = metric, by = "imputed_sex")
-
-        # Extract the field name as used in the config
-        if metric == "sample_qc.dp_stats.mean": 
-            config_key = '.'.join(metric.split('.')[-2:]).upper()
-        else:
+        for metric in stats: 
             
-            config_key = metric.split('.')[-1].upper()
-        
-        threshold = sample_thresholds.get(f"{config_key}_{config['seq_type']}_threshold", None)
-        
-        if threshold is None: # get the threshold for the fields that doesnt depend on the sequencing type
-            threshold = sample_thresholds.get(f"{config_key}_threshold", None)
-        
-        print(threshold)
-        if threshold is not None:
-            plt.axhline(y=threshold, color='red', linestyle='--', label='Threshold')
-            plt.legend() 
+            try:
+                plt.figure()
 
-        # Improve layout and labels
-        plt.title(f'{metric}')
-        plt.ylabel(metric)
+                # Plot boxplot
+                df.boxplot(column = metric, by = "imputed_sex")
 
-        name_only = get_name() # get name depending on the file working with 
-        
-        plt.savefig(f'{name_only}_{metric}.png')
-        plt.clf()
+                # Extract the field name as used in the config
+                if metric == "sample_qc.dp_stats.mean": 
+                    config_key = '.'.join(metric.split('.')[-2:]).upper()
+                else:
+                    
+                    config_key = metric.split('.')[-1].upper()
+                
+                # get threshold from config
+                threshold = sample_thresholds.get(f"{config_key}_{config['seq_type']}_threshold", None) # fields where treshold depends on seq type
+                
+                if threshold is None: # threshold for the fields that doesnt depend on the seq type
+                    threshold = sample_thresholds.get(f"{config_key}_threshold", None)
+                
+                if threshold is not None:
+                    if isinstance(threshold, (list, tuple)) and len(threshold) == 2: # when threshold is an interval
+                        lower, upper = threshold
+                        plt.axhline(y=lower, color='red', linestyle='--', label='Lower Threshold')
+                        plt.axhline(y=upper, color='orange', linestyle='--', label='Upper Threshold') 
+                    else:    
+                        plt.axhline(y=threshold, color='red', linestyle='--', label='Threshold')
+                    
+                    plt.legend() 
+
+                plt.title(f'{metric}') # set title and label for the plot
+                plt.ylabel(metric)
+
+                name_only = get_name() # get name depending on the file working with 
+                
+                plt.savefig(f'{name_only}_{metric}.png')
+                plt.clf()
+            
+            except KeyError:
+                print(f"Skipping metric due to KeyError: {metric}")
+                continue
+                
 
 
 
 def create_stats(mt, field_path, aggregate):
+    """
+    Creates basic stats about the quality control fields. Informative to understand why variants/samples/genotypes are deleted
+    :params: mt without the qc applied for that stat, QC field, is the field from samples or variants
+    :return: basic stats about the quality control fields 
+    """
     # Get the field using bracket notation to handle nested paths
     field_expr = mt[field_path] if '.' not in field_path else eval(f"mt.{field_path}")
 
@@ -143,8 +192,21 @@ def create_stats(mt, field_path, aggregate):
         return None
         
     
-    
+def verbosity_counts_variants(mt, filter_name, filter_step, summary, stats):
+    """
+    Calculates the number of variants deleted per qc step
+    :params: mt without QC, filter name, filter command, CSV summary, basic stats to add them to CSV summary
+    :return: counts about removed variants and appropiate logs.
+    """
+    repo_stats = mt.aggregate_rows(hl.struct(
+        total = hl.agg.count(),
+        passing=hl.agg.count_where(filter_step)
+        )
+    )   
+    logging.info(f"{filter_name} filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+    summary.append([filter_name, repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
 
+    return summary 
 
 
 

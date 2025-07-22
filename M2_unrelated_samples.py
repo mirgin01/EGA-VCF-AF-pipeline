@@ -3,10 +3,12 @@ import yaml
 import os 
 from utils import *
 
-config = load_config()
-load_logging()
-
 def quality_control(mt):
+    """
+    Applies quality control relevant to relatedness estimation. The variants deleted with this QC are NOT deleted from the regular mt. Just deleted for the relatedness estimation. 
+    :params: mt without relatedness qc
+    :return: mt with relatedness QC
+    """
 
     mt = mt.filter_rows( # these filters are not in the config because they are necessary for a correct relatedness estimation
     (hl.len(mt.alleles) == 2) &  # only biallelic SNPs
@@ -23,6 +25,11 @@ def quality_control(mt):
     return mt, n_var
 
 def subset_100000(mt, n_var): 
+    """
+    Arround 100.000 variants are enough to estimate relatedness with PCA. Subset 100.000 from variants that passed relatedness QC. 
+    :params: mt with relatedness qc, number of variants that pass the relatedness qc  
+    :return: subset of arround 100.000 variants with relatedness qc 
+    """
 
     logging.info("Creating Subset of arround 100.000 variants passing relatedness QC")
     
@@ -54,7 +61,12 @@ def subset_100000(mt, n_var):
 
 
 def find_high_kin_score(mt):
-    
+    """
+    Find the samples which relatedness score is > 0.45 The purge of highly related samples is calculated using king algorithm.  
+    :params: subset of 100.000 variants with relatedness qc
+    :return: list of higly related samples to delete 
+    """
+
     king_ht = hl.king(mt.GT)  # KING operates on the genotype data (afterQC_vcfmatrix.GT)
 
     high_kinship_score = king_ht.filter_entries(king_ht['phi'] > 0.45) # get the pairs of higly releated samples (auto-comparison of samples and twins)
@@ -71,11 +83,15 @@ def find_high_kin_score(mt):
     return twins_table
 
 def delete_related_indv(mt, mt_filtered):
-
     """
-    Less principal components (k) -- less memory
-    block_size parameter in hl.pc_relate determines how many samples are processed at a time. By reducing this value, you can lower memory usage at the expense of computational time.
+    Find the samples which relatedness score is > 0.1 . Estimation done by PCA  
+    :params: subset of 100.000 variants with relatedness qc
+    :return: mt (with all the original variants without relatedness qc) with maximal independent set of related samples
     """
+   
+    #Less principal components (k) -- less memory
+    #block_size parameter in hl.pc_relate determines how many samples are processed at a time. By reducing this value, you can lower memory usage at the expense of computational time.
+    
     logging.info("hwe_normalized_pca running with subset QC relatedness matrix")
     pca_eigenvalues, pca_scores, pca_loadings = hl.hwe_normalized_pca(mt_filtered.GT, k=5, compute_loadings=False)  # Compute PCA
 
@@ -100,7 +116,12 @@ def delete_related_indv(mt, mt_filtered):
     return mt 
 
 def delete_related_samples(mt):
-    
+    """
+    Calls all the relatedness module function. Deletes the samples inferred by King. 
+    :params: mt with related samples
+    :return: mt without related samples
+    """
+   
     mt_qual, n_var = quality_control(mt)
 
     mt_filtered = subset_100000(mt_qual, n_var[0])
@@ -116,7 +137,11 @@ def delete_related_samples(mt):
 
     after_rel_trim = mt.count() 
 
-    logging.info(f"Dataset size after relatedness trimming. Variants: {after_rel_trim[0]}, Samples: {after_rel_trim[1]}   ")
+    logging.info(f"Dataset size after relatedness trimming. Variants: {after_rel_trim[0]}, Samples: {after_rel_trim[0]}   ")
+    if config['verbosity']:
+            summary = []
+            summary.append(["Dataset size after relatedness trimming", after_rel_trim[0], after_rel_trim[0]])
+            csv_writer(summary)
 
     return mt 
     

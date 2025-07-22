@@ -6,6 +6,11 @@ load_logging()
 config = load_config()
 
 def stats_by_sex(mt):
+    """
+    Creates stats: number of female, number of male and undefined 
+    :params: mt 
+    :return: stats about sexes in data 
+    """
    
     results_sex_agg = mt.aggregate_cols(hl.agg.counter(mt.imputed_sex))
 
@@ -28,15 +33,19 @@ def stats_by_sex(mt):
     return mt, results_sex_agg
 
 
-def stats_by_ancestry(mt):
-
+def stats_by_ancestry(mt):   
+    """
+    Creates stats: number of samples per population in the data
+    :params: mt 
+    :return: stats about ancestry groups in the data 
+    """
     results_ancestry_agg = mt.aggregate_cols(hl.agg.counter(mt.ancestry))  # agg samples (columns) by ancestry
 
     if None in results_ancestry_agg:
         logging.error("Some samples without ancestry information")
 
     logging.info("Ancestry Statistics")
-    logging.info(f"Ancestry super-populations: {results_ancestry_agg}")  ## TODO add to csv
+    logging.info(f"Ancestry super-populations: {results_ancestry_agg}") 
     anc_summary = []
     anc_summary.append("")
     anc_summary.append(["Ancestry statistics"])
@@ -46,6 +55,11 @@ def stats_by_ancestry(mt):
     return mt, results_ancestry_agg
 
 def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
+    """
+    Recalculates AF fields grouped by sex and ancestry 
+    :params: mt, sexes present in the data, ancestries present in the data
+    :return: AF fields by sex and ancestry
+    """
     logging.info("Re-calculating AFs by sex and ancestry if available")
 
     mt = mt.annotate_rows(
@@ -66,7 +80,7 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
     AF_sex = {}
     sexes_avail = list(results_sex_agg.keys()) # gets the sexes in the VCF
     for sex in sexes_avail: # create stats by sex
-        if sex is "undefined":
+        if sex == "undefined":
             continue  # Skip samples with unknown sex
         AF_sex[f"AF_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AF[1]
         AF_sex[f"AC_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AC[1]
@@ -75,11 +89,12 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
 
     logging.warning("Samples where sex couldn't be inferred will be ignored")
 
-    if config['ancestry'] and results_ancestry_agg is not "":
+    if config['ancestry'] and results_ancestry_agg != "":
         AF_ancestry = {}
         ancestry_avail = list(results_ancestry_agg.keys()) # gets the ancestries in the VCF
-        ## TODO skip samples with unknown ancestry
         for ancestry in ancestry_avail: # create stats by ancestry
+            if ancestry == "Multi-ancestry":
+                continue  # Skip samples with multi-ancestry
             AF_ancestry[f"AF_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AF[1]
             AF_ancestry[f"AC_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AC[1]
             AF_ancestry[f"AC_hom_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].homozygote_count[1]
@@ -92,6 +107,11 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
 
 
 def annotate_new_vcf(mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_ancestry):
+    """
+    Annotates mt with AF fields by sex and ancestry
+    :params: mt, stast about total AF and AF fields by sex and ancestry
+    :return: mt with AF fields by sex and ancestry
+    """
     mt_af = mt.annotate_rows(
         info=mt.info.annotate(  # Extend the original info field
             AF_total_recalc=AF_total,
@@ -106,6 +126,11 @@ def annotate_new_vcf(mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_
 
 
 def export_new_vcf(mt_af):
+    """
+    Export mt with ancestry and sex AF fields to VCF 
+    :params: mt with AF fields by sex and ancestry
+    :return: VCF with AF fields by sex and ancestry
+    """
     header_metadata = hl.get_vcf_metadata(config['vcf_for_header'])  # get original header
     if config['summary_VCF'] == True:
         logging.info("Exporting final summary VCF with recalculated AF fields and no sample information")

@@ -4,19 +4,23 @@ import pandas as pd
 from utils import *
 import os
 
-load_logging()
+#load_logging()
 config = load_config()
 
 def subset_matrix(mt):
-    # load matrix
-    mt = mt.key_rows_by('locus', 'alleles')
+    """
+    Finds all the ancestry informative SNPs in our matrix. Creates a subset matrix with ancestry SNPs and applies HWE QC. Export the subset matrix as a VCF 
+    :params: mt 
+    :return: VCF with ancestry informative SNPs and HWE QC done.
+    """
+    
+    mt = mt.key_rows_by('locus', 'alleles') # key matrix columns for quick search
 
     # load ancestry SNPs depending on the ref_gen
     ht_variants = hl.import_table(f"{config['ancestrySNPs']}ancestry_SNPs_GrafAnc_{config['ref_gen']}",
                                   delimiter='\t', impute=True, skip_blank_lines = True)
 
-    ht_variants = ht_variants.key_by(**hl.parse_variant(ht_variants.ancestrySNPs)) #Convert variants in string
-    # format to separate locus and allele hail fields
+    ht_variants = ht_variants.key_by(**hl.parse_variant(ht_variants.ancestrySNPs)) #Convert variants in string format to separate locus and allele hail fields
     ht_variants = ht_variants.key_by('locus', 'alleles')
 
     # filter variants
@@ -31,7 +35,6 @@ def subset_matrix(mt):
     logging.info(f"HWE filtering done - Variants removed: {pre_count - post_count}")
 
     # export VCF
-    print(ancestry_mt.count())
     mt_path = config['mt_afterQC'] if config['preprocessing'] else config['mt_from_vcf']
     logging.info(f"There are {pre_count} ancestry SNPs in {mt_path}")
     ancestry_vcf = os.path.join(os.path.dirname(mt_path), "ancestrySNPs.vcf")
@@ -49,12 +52,19 @@ def subset_matrix(mt):
     return ancestry_vcf
 
 def call_grafanc(ancestry_vcf, mt_path):
+    """
+    Calls grafanc and transform results to super populations
+    :params: VCF with ancestry informative SNPs and path to the original matrix 
+    :return: Ancestry information per sample
+    """
+    
     # run GrafAnc
     basename = os.path.basename(mt_path.rstrip('/'))  # create name for results file
-    name_only = os.path.splitext(basename)[0]
+    name_only = os.path.splitext(basename)[0]   
     ancestry_results = os.path.join(os.path.dirname(mt_path), f"{name_only}-GrafAnc_results")
     logging.info(f"Running GrafAnc: $ grafanc {ancestry_vcf} {ancestry_results}")
     os.system(f"grafanc {ancestry_vcf} {ancestry_results} --threads 4")
+
 
     try:
         # update ancestry groups to super populations
@@ -81,6 +91,11 @@ def call_grafanc(ancestry_vcf, mt_path):
         return None
 
 def annotate_ancestry(ancestry_results, mt):
+    """
+    Annotates GrafAnc results to original matrix.
+    :params: ancestry results per sample from GrafAnc and original mt (all the SNPs, ancestry informative and non-informative)
+    :return: matrix with ancestry information
+    """
     ancestry_table = hl.import_table(ancestry_results, delimiter="\t", impute=True)
     ancestry_table = ancestry_table.select('Sample', 'AncGroupNAME')
     ancestry_table = ancestry_table.key_by('Sample')

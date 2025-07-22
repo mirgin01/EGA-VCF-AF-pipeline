@@ -21,12 +21,14 @@ hl.init(
     local_tmpdir = config["local_tmpdir"]
 )
 
-load_logging() # create proper logs 
+
 
 def main():
+    
     config = load_config()
+    load_logging() # create proper logs 
 
-    logging.info(f"+++ Running EGA standard VCF workflow v1 +++") 
+    logging.info(f"+++ Running EGA standard VCF workflow v1 +++")
 
     csv_creator() 
     summary = []
@@ -67,13 +69,6 @@ def main():
         mt.write(config['mt_afterQC'], overwrite=True)  # write matrix with QC 
         logging.info(f"MT with QC written in: {config['mt_afterQC']}")
         
-        if config['verbosity']:
-            summary = []
-            summary.append([])
-            summary.append(["", "Variants", "Samples"])
-            summary.append(["Original dataset size", original_size[0], original_size[1]])
-            summary.append(["After QC dataset size", final_size[0], final_size[1]])
-            csv_writer(summary)
 
     else:
         mt = hl.read_matrix_table(config['mt_from_vcf'])
@@ -81,9 +76,8 @@ def main():
         original_size = mt.count()
         
         logging.info(f"Original dataset size. Variants: {original_size[0]}, Samples: {original_size[1]}   ")
-        logging.warning("No quality control applied to variants, samples and genotypes")
+        logging.warning(f"No quality control applied to variants, samples and genotypes. Working with {config['mt_from_vcf']}")
 
-        csv_creator()
         summary = []
         summary.append([])
         summary.append(["", "Variants", "Samples"])
