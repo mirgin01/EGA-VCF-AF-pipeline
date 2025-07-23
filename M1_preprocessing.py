@@ -45,30 +45,6 @@ def convert_and_merge_vcfs(vcf_dir, mt_from_vcf, reference_genome):
     return mt
 
 
-def impute_sex(mt):
-    """
-    Imputes sex for all the samples
-    :params: Imputes sex with original data
-    :return: Imputed sex by sample
-    """
-    
-    imputed_sex = hl.impute_sex(mt.GT, aaf_threshold=0.05, female_threshold=0.5, male_threshold=0.75)  # Imputed sex with suggested thresholds
-    sex_expr = hl.if_else(hl.is_defined(imputed_sex.is_female), hl.if_else(imputed_sex.is_female, # rename imputed sex
-                                                                        "female",
-                                                                        "male"),
-                                                                        "undefined")
-    sex_ht = imputed_sex.annotate(imputed_sex=sex_expr)
-
-    # annotate input (all chroms) mt with imputed sex
-    sex_colnames = ["f_stat", "is_female", "imputed_sex"]
-    mt = mt.annotate_cols(**sex_ht.select(*sex_colnames)[mt.col_key])
-
-    # Save the sex imputation results
-    basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))
-    sex_ht.select("imputed_sex", "f_stat", "is_female").export(f"{basename}_imputed_sex_results.tsv")
-
-    return mt 
-
 def split_multiallelic(mt, original_size):
     """
     Splits multiallelic variants
@@ -343,17 +319,19 @@ def sample_filtering(mt, sequencingType):
     mt = hl.sample_qc(mt)
 
     # Compute CHARR
-    if not config.get('gnomad_sites') or config['gnomad_sites'].strip() == '':
-        logging.error("gnomAD sites path is empty or not configured - check your conf.py")
-    else: 
-        if "AF" in mt.info:
-            gnomad_sites = hl.read_table(config['gnomad_sites'])
-            charr_result = hl.compute_charr(
-                mt,
-                ref_AF=(1 - gnomad_sites[mt.row_key].freq[0].AF)
-            )
-            #annotate charr results
-            mt = mt.annotate_cols(charr=charr_result[mt.col_key].charr)
+    if config['ref_gen'] == "GRCh37": 
+        if not config.get('gnomad_sites_GRCh37') or config['gnomad_sites_GRCh37'].strip() == '':
+            logging.error("gnomAD sites GRCh37 path is empty or not configured - check your conf.py")
+        else:
+            mt = run_charr(mt, config['gnomad_sites_GRCh37'])
+    elif config['ref_gen'] == "GRCh38": 
+        if not config.get('gnomad_sites_GRCh38') or config['gnomad_sites_GRCh38'].strip() == '':
+            logging.error("gnomAD sites GRCh83 path is empty or not configured - check your conf.py")
+        else:
+            mt = run_charr(mt, config['gnomad_sites_GRCh38'])       
+    else:
+        logging.error("The value inserted as ref_gen is not valid. Please, choose between GRCh37 and GRCh38")
+
 
     config['verbosity'] = True
 

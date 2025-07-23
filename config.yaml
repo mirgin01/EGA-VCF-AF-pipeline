@@ -5,7 +5,8 @@ ref_gen : "GRCh37" # reference genome from the VCFs
 mt_from_vcf : "/home/mireia/Bioinfo/Hail_folder/gonl_subset3000.mt" # path where the original matrix will be saved
 seq_type : "WGS" # sequencing typw
 mt_afterQC : "/home/mireia/Bioinfo/Hail_folder/gonl_AFTERQC.mt" # path where the after QC matrix will be
-gnomad_sites : ""
+gnomad_sites_GRCh37 : "" # reference for GRCh37 
+gnomad_sites_GRCh38 : "" # reference for GRCh38
 
 ## LOGs
 verbosity : true # if true a csv with variants deleted per step will be create. This increases the execution time.

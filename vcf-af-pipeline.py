@@ -1,4 +1,4 @@
-from M1_preprocessing import convert_and_merge_vcfs, split_multiallelic, genotype_filtering, variant_filtering, sample_filtering, impute_sex
+from M1_preprocessing import convert_and_merge_vcfs, split_multiallelic, genotype_filtering, variant_filtering, sample_filtering
 from M2_unrelated_samples import delete_related_samples
 from M3_ancestry import subset_matrix, call_grafanc, annotate_ancestry
 from M4_af_annotation import stats_by_sex, stats_by_ancestry, af_by_sex_ancestry, annotate_new_vcf, export_new_vcf

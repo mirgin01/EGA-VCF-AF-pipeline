@@ -20,7 +20,6 @@ def get_name():
     if _name_only is None:
         basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))  
         _name_only = f"{os.path.splitext(basename)[0]}_{_timestamp}"
-        print(_name_only)
     
     return _name_only
  
@@ -137,7 +136,7 @@ def create_sample_plot(mt):
             
             except KeyError:
                 print(f"Skipping metric due to KeyError: {metric}")
-                continue
+                continuelogging.info(f"Sex inference saved in: {basename}_imputed_sex_results.tsv")
                 
 
 
@@ -208,7 +207,42 @@ def verbosity_counts_variants(mt, filter_name, filter_step, summary, stats):
 
     return summary 
 
+def run_charr(mt, reference):
+    if "AF" in mt.info:
+        gnomad_sites = hl.read_table(reference)
+        charr_result = hl.compute_charr(
+            mt,
+            ref_AF=(1 - gnomad_sites[mt.row_key].freq[0].AF)
+        )
+        #annotate charr results
+        mt = mt.annotate_cols(charr=charr_result[mt.col_key].charr)
+    
+    return mt 
 
+def impute_sex(mt):
+    """
+    Imputes sex for all the samples
+    :params: Imputes sex with original data
+    :return: Imputed sex by sample
+    """
+    
+    imputed_sex = hl.impute_sex(mt.GT, aaf_threshold=0.05, female_threshold=0.5, male_threshold=0.75)  # Imputed sex with suggested thresholds
+    sex_expr = hl.if_else(hl.is_defined(imputed_sex.is_female), hl.if_else(imputed_sex.is_female, # rename imputed sex
+                                                                        "female",
+                                                                        "male"),
+                                                                        "undefined")
+    sex_ht = imputed_sex.annotate(imputed_sex=sex_expr)
+
+    # annotate input (all chroms) mt with imputed sex
+    sex_colnames = ["f_stat", "is_female", "imputed_sex"]
+    mt = mt.annotate_cols(**sex_ht.select(*sex_colnames)[mt.col_key])
+
+    # Save the sex imputation results
+    basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))
+    sex_ht.select("imputed_sex", "f_stat", "is_female").export(f"{basename}_imputed_sex_results.tsv")
+    logging.info(f"Sex inference saved in: {basename}_imputed_sex_results.tsv")
+
+    return mt
 
 config = load_config()
 

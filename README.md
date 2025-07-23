@@ -68,7 +68,9 @@ pip install PyYAML pandas
 
 ### 3. CHARR Contamination Filtering Reference
 
-If you plan to run CHARR contamination filtering (recommended), you’ll need to download a reference database.
+If you plan to run CHARR contamination filtering (recommended), you’ll need to download the reference database for the genome version of your data. Bear in mind that, if all your data belongs to the same version, you'll only need to download that reference. 
+
+* **If your data was aligned to GRCh37**
 
 To check the size and contents of the folder before downloading:
 
@@ -80,6 +82,20 @@ To download the reference data:
 
 ```
 gsutil cp -r gs://gcp-public-data--gnomad/release/2.1.1/ht/genomes/gnomad.genomes.r2.1.1.sites.ht/ .
+```
+
+* **If your data was aligned to GRCh38**
+
+To check the size and contents of the folder before downloading:
+
+```
+gsutil ls -l gs://gcp-public-data--gnomad/release/4.1/ht/genomes/gnomad.genomes.v4.1.sites.ht/
+```
+
+To download the reference data: 
+
+```
+gsutil cp -r gs://gcp-public-data--gnomad/release/4.1/ht/genomes/gnomad.genomes.v4.1.sites.ht/ .
 ```
 
 ## Module Overview
@@ -199,21 +215,15 @@ verbosity : true # if true a csv with variants deleted per step will be create. 
 
 
 ## MODULES TO RUN
-preprocessing : true # if true the module will be run
-delete_related: true
-ancestry : true
-af_annotation : true
-
-## PREPROCESSING STEPS
-convert_vcfs : true # if true the step will be run
+preprocessing : true # if true the module will be run# Compute CHARR
 split_multiallelic : true
-genotype_filtering : true
+genotype_filtering : true# Compute CHARR
 variant_filtering : true
 sample_filtering : true
-
+# Compute CHARR
 ## VARIANT FILTERING THRESHOLDS
 variant_filters:
-  QD_threshold : 2.0 # threshold used during the QC
+  QD_threshold : 2.0 # threshold used during t# Compute CHARRhe QC
   DP_threshold : 15 
   QUAL_threshold : 40
   MQ_threshold : 40
