@@ -36,7 +36,7 @@ AN_pop_n_recalc
 **Note:**  
 If sex and ancestry cannot be inferred from genomic data, sex-based and ancestry-based grouping will be skipped.
 
-## Requirements
+## Requirements and Installation
 
 ### 1. Install Hail 
 
@@ -97,6 +97,10 @@ To download the reference data:
 ```
 gsutil cp -r gs://gcp-public-data--gnomad/release/4.1/ht/genomes/gnomad.genomes.v4.1.sites.ht/ .
 ```
+
+### 4. Clone the repository 
+
+Once all the requirements have been installed, clone this repository to your local computer or cluster. When cloning, you will download all the code for the pipeline, as well as the binaries for GrafAnc — the tool used to infer the ancestry of the samples.
 
 ## Module Overview
 
@@ -208,11 +212,10 @@ ref_gen : " " # reference genome from the VCFs (OPTIONS: GRCh37 / GRCh38)
 mt_from_vcf : " " # path where the original matrix will be saved
 seq_type : " " # sequencing type (OPTIONS: WGS / WES)
 mt_afterQC : " " # path where the after QC matrix will be
-gnomad_sites : "" # path where gnomad.genomes.r2.1.1.sites.ht has been downloaded
 
 ## LOGs
 verbosity : true # if true a csv with variants deleted per step will be create. This increases the execution time.
-
+plots: false # create box plot showing the distribution of each QC sample parameter
 
 ## MODULES TO RUN
 preprocessing : true # if true the module will be run# Compute CHARR
@@ -220,10 +223,10 @@ split_multiallelic : true
 genotype_filtering : true# Compute CHARR
 variant_filtering : true
 sample_filtering : true
-# Compute CHARR
+
 ## VARIANT FILTERING THRESHOLDS
 variant_filters:
-  QD_threshold : 2.0 # threshold used during t# Compute CHARRhe QC
+  QD_threshold : 2.0 # threshold used during QC
   DP_threshold : 15 
   QUAL_threshold : 40
   MQ_threshold : 40
@@ -247,6 +250,8 @@ sample_filters:
   CHARR_threshold : 0.05
   R_TI_TV_WES_threshold : [3.0 , 3.3]
   R_TI_TV_WGS_threshold : [2.0 , 2.1]
+gnomad_sites_GRCh37 : "" # reference for GRCh37 
+gnomad_sites_GRCh38 : "" # reference for GRCh38
 
 ## ANCESTRY
 ancestrySNPs : "path/to/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs (Downloaded when cloning this repo)
@@ -293,3 +298,9 @@ python vcf-af-pipeline.py
 In the pipeline diagram you'll find the different paths your data can follow with this pipeline. In purple you'll find highlighted our proposed path, where all the quality control steps are performed, related samples are deleted and ancestry is inferred. 
 
 ![Pipeline Diagram](VCF_EGA_pipeline.png)
+
+## REFERENCES
+
+jimmy-penn/grafanc: GrafPop from dbSNP [GitHub]. [cited 2025 Jul 24]. Available from: https://github.com/jimmy-penn/grafanc/tree/master
+
+Hail Team. Hail 0.2. [cited 2025 Jul 24]. Available from: https://github.com/hail-is/hail

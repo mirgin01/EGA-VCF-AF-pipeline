@@ -66,8 +66,13 @@ def main():
         final_size = mt.count()
         logging.info(f"After QC dataset size. Variants: {final_size[0]}, Samples: {final_size[1]}   ")
 
-        mt.write(config['mt_afterQC'], overwrite=True)  # write matrix with QC 
-        logging.info(f"MT with QC written in: {config['mt_afterQC']}")
+        if final_size[0] == 0:
+            logging.error("All the variants were deleted by the quality control - stopping the pipeline")
+        if final_size[1] == 0:
+            logging.error("All the samples were deleted by the quality control - stopping the pipeline")
+        else:
+            mt.write(config['mt_afterQC'], overwrite=True)  # write matrix with QC 
+            logging.info(f"MT with QC written in: {config['mt_afterQC']}")
         
 
     else:

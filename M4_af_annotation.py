@@ -75,7 +75,7 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
     AF_total = mt.gt_stats.AF[1] # get total stats
     AC_total = mt.gt_stats.AC[1]
     AN_total = mt.gt_stats.AN
-    AC_hom_total = mt.gt_stats.homozygote_count[1]
+    nhom_alt_total = mt.gt_stats.homozygote_count[1]
 
     AF_sex = {}
     sexes_avail = list(results_sex_agg.keys()) # gets the sexes in the VCF
@@ -84,7 +84,7 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
             continue  # Skip samples with unknown sex
         AF_sex[f"AF_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AF[1]
         AF_sex[f"AC_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AC[1]
-        AF_sex[f"AC_hom_{sex}_recalc"] = mt.gt_stats_by_sex[sex].homozygote_count[1]
+        AF_sex[f"nhom_alt_{sex}_recalc"] = mt.gt_stats_by_sex[sex].homozygote_count[1]
         AF_sex[f"AN_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AN
 
     logging.warning("Samples where sex couldn't be inferred will be ignored")
@@ -97,16 +97,16 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
                 continue  # Skip samples with multi-ancestry
             AF_ancestry[f"AF_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AF[1]
             AF_ancestry[f"AC_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AC[1]
-            AF_ancestry[f"AC_hom_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].homozygote_count[1]
+            AF_ancestry[f"nhom_alt_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].homozygote_count[1]
             AF_ancestry[f"AN_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AN
     else:
         AF_ancestry={}
 
-    return mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_ancestry
+    return mt, AF_total, AC_total, AN_total, nhom_alt_total, AF_sex, AF_ancestry
 
 
 
-def annotate_new_vcf(mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_ancestry):
+def annotate_new_vcf(mt, AF_total, AC_total, AN_total, nhom_alt_total, AF_sex, AF_ancestry):
     """
     Annotates mt with AF fields by sex and ancestry
     :params: mt, stast about total AF and AF fields by sex and ancestry
@@ -116,7 +116,7 @@ def annotate_new_vcf(mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_
         info=mt.info.annotate(  # Extend the original info field
             AF_total_recalc=AF_total,
             AC_total_recalc=AC_total,
-            AC_hom_total_recalc=AC_hom_total,
+            nhom_alt_total_recalc=nhom_alt_total,
             AN_total_recalc= AN_total,
             **AF_sex,
             **AF_ancestry

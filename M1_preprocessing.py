@@ -452,6 +452,9 @@ def sample_filtering(mt, sequencingType):
         except TypeError:
             logging.info("CHARR couldn't be calculated")
             summary.append(["CHARR", "-", "-", "-", "Not available"])
+        except LookupError:
+            logging.info("CHARR couldn't be calculated")
+            summary.append(["CHARR", "-", "-", "-", "Not available"])
 
 
     # Het/Hom ratio filtering
