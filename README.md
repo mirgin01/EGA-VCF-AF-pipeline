@@ -15,19 +15,19 @@ The final output will be a VCF file with all population allele frequencies (`AF`
 ```
 AF_total_recalc
 AC_total_recalc
-AC_hom_total_recalc
+nhomalt_total_recalc
 AN_total_recalc
 AF_male_recalc
 AC_male_recalc
-AC_hom_male_recalc
+nhomalt_male_recalc
 AN_male_recalc
 AF_female_recalc
 AC_female_recalc
-AC_hom_female_recalc
+nhomalt_female_recalc
 AN_female_recalc
 AF_pop_n_recalc
 AC_pop_n_recalc
-AC_hom_pop_n_recalc
+nhomalt_pop_n_recalc
 AN_pop_n_recalc
 ```
 
@@ -192,12 +192,13 @@ If there are not enought ancestry-informative SNPs in the input VCF the ancestry
 
 ### MODULE 4: Allele Frequency Recalculation
 
-Calculate `AF`, `AC`, `AC_hom`, and `AN` for:
+It calculates the allele frequencies statistics for the total entries of the dataset and stratified by male, female an each ancestry group. 
+It outputs: 
+- Allele Count (AC) : alternate allele count in high quality genotypes
+- Allele Number (AN) : total number of called high quality genotypes
+- Allele Frequency (AF) : number of individuals for alternate allele
+- Number of homozygotes (nhomalt) : alternate allele frequency in high quality genotypes
 
-- Total population
-- Males
-- Females
-- Each ancestry group
 
 And finally, export a single VCFs with all the AF fields annotated. 
 
