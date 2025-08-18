@@ -129,7 +129,7 @@ Apply the following quality filters:
 
 #### Step 4: Genotype Quality Control
 
-Apply the following quality filters:
+Apply the following quality filters to mask out low-quality genotypes:
 
 | Metric                   | Threshold         | Description                                                                                 |
 |---------------------------|--------------------|---------------------------------------------------------------------------------------------|
@@ -152,6 +152,8 @@ Apply the following quality filters:
 #### Step 6: Sex Inference
 
 Infer sample sex using its genomic information. If sex cannot be determined, sex-based grouping will be skipped.
+
+**Note:** Currently, only XX and XY sexes are inferred. Aneuploides will land under undefined.  
 
 ### MODULE 2: Delete related samples
 

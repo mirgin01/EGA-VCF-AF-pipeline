@@ -62,33 +62,40 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
     """
     logging.info("Re-calculating AFs by sex and ancestry if available")
 
+    # STEP 1: Calculate comprehensive genotype statistics
     mt = mt.annotate_rows(
-        gt_stats=hl.agg.call_stats(mt.GT, mt.alleles), # calculate total AF
-        gt_stats_by_sex=hl.agg.group_by(mt.imputed_sex, hl.agg.call_stats(mt.GT, mt.alleles)), # calculate by sex AF
+        gt_stats=hl.agg.call_stats(mt.GT, mt.alleles), # Calculate overall statistics for all variants
+        gt_stats_by_sex=hl.agg.group_by(mt.imputed_sex, hl.agg.call_stats(mt.GT, mt.alleles)), # Calculate sex-stratified statistics
     )
-    # check ancestry field exists before computing ancestry AF
+    
+    # STEP 2: Conditionally calculate ancestry-stratified statistics
+    # Only compute ancestry stats if the ancestry field exists in the dataset
     if 'ancestry' in mt.col:
         mt = mt.annotate_rows(
             gt_stats_by_ancestry=hl.agg.group_by(mt.ancestry, hl.agg.call_stats(mt.GT, mt.alleles))
         )
 
+    # STEP 3: Extract overall population statistics
+    # Index [1] refers to the alternate allele (index [0] would be reference allele)
     AF_total = mt.gt_stats.AF[1] # get total stats
     AC_total = mt.gt_stats.AC[1]
     AN_total = mt.gt_stats.AN
-    nhom_alt_total = mt.gt_stats.homozygote_count[1]
+    homozygote_count_total = mt.gt_stats.homozygote_count[1]
 
+    # STEP 4: Extract sex-stratified statistics
     AF_sex = {}
-    sexes_avail = list(results_sex_agg.keys()) # gets the sexes in the VCF
+    sexes_avail = list(results_sex_agg.keys())  # Get available sex categories from input
     for sex in sexes_avail: # create stats by sex
         if sex == "undefined":
             continue  # Skip samples with unknown sex
         AF_sex[f"AF_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AF[1]
         AF_sex[f"AC_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AC[1]
-        AF_sex[f"nhom_alt_{sex}_recalc"] = mt.gt_stats_by_sex[sex].homozygote_count[1]
+        AF_sex[f"homozygote_count_{sex}_recalc"] = mt.gt_stats_by_sex[sex].homozygote_count[1]
         AF_sex[f"AN_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AN
 
     logging.warning("Samples where sex couldn't be inferred will be ignored")
 
+    # STEP 5: Extract ancestry-stratified statistics (if available)
     if config['ancestry'] and results_ancestry_agg != "":
         AF_ancestry = {}
         ancestry_avail = list(results_ancestry_agg.keys()) # gets the ancestries in the VCF
@@ -97,16 +104,16 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
                 continue  # Skip samples with multi-ancestry
             AF_ancestry[f"AF_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AF[1]
             AF_ancestry[f"AC_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AC[1]
-            AF_ancestry[f"nhom_alt_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].homozygote_count[1]
+            AF_ancestry[f"homozygote_count_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].homozygote_count[1]
             AF_ancestry[f"AN_{ancestry}_recalc"] = mt.gt_stats_by_ancestry[ancestry].AN
     else:
         AF_ancestry={}
 
-    return mt, AF_total, AC_total, AN_total, nhom_alt_total, AF_sex, AF_ancestry
+    return mt, AF_total, AC_total, AN_total, homozygote_count_total, AF_sex, AF_ancestry
 
 
 
-def annotate_new_vcf(mt, AF_total, AC_total, AN_total, nhom_alt_total, AF_sex, AF_ancestry):
+def annotate_new_vcf(mt, AF_total, AC_total, AN_total, homozygote_count_total, AF_sex, AF_ancestry):
     """
     Annotates mt with AF fields by sex and ancestry
     :params: mt, stast about total AF and AF fields by sex and ancestry
@@ -116,7 +123,7 @@ def annotate_new_vcf(mt, AF_total, AC_total, AN_total, nhom_alt_total, AF_sex, A
         info=mt.info.annotate(  # Extend the original info field
             AF_total_recalc=AF_total,
             AC_total_recalc=AC_total,
-            nhom_alt_total_recalc=nhom_alt_total,
+            nhom_alt_total_recalc=homozygote_count_total,
             AN_total_recalc= AN_total,
             **AF_sex,
             **AF_ancestry

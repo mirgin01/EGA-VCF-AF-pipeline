@@ -11,10 +11,10 @@ verbosity : true # if true a csv with variants deleted per step will be create. 
 plots: false # create box plot showing the distribution of each QC sample parameter
 
 ## MODULES TO RUN
-preprocessing : true # if true the module will be run
+preprocessing : false # if true the module will be run
 delete_related: false
 ancestry : false
-af_annotation : false
+af_annotation : true
 
 ## PREPROCESSING STEPS
 convert_vcfs : false # if true the module will be run
@@ -74,7 +74,6 @@ spark_executor_instances: "4" # Use multiple executors
 spark_executor_cores: "4" # Assign cores per executor
 spark_rpc_askTimeout: "300s" # Increase timeout for slow operations
 spark_sql_shuffle_partitions: "200" # Reduce shuffle partitions for large data
-spark_memory_fraction: "0.8" # Use most of the JVM heap for Spark execution
 spark_local_dir: "./tmp" # Specify a temp directory for disk spill
 spark_network_timeout: "800s" # Avoid network timeouts
 tmp_dir: "./tmp"
