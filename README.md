@@ -221,10 +221,16 @@ verbosity : true # if true a csv with variants deleted per step will be create. 
 plots: false # create box plot showing the distribution of each QC sample parameter
 
 ## MODULES TO RUN
-preprocessing : true # if true the module will be run# Compute CHARR
-split_multiallelic : true
-genotype_filtering : true# Compute CHARR
-variant_filtering : true
+preprocessing : false # if true the module will be run
+delete_related: false
+ancestry : false
+af_annotation : true
+
+## PREPROCESSING STEPS
+convert_vcfs : false # if true the module will be run
+split_multiallelic : false
+genotype_filtering : false
+variant_filtering : false
 sample_filtering : true
 
 ## VARIANT FILTERING THRESHOLDS
