@@ -136,7 +136,8 @@ def create_sample_plot(mt):
             
             except KeyError:
                 print(f"Skipping metric due to KeyError: {metric}")
-                continuelogging.info(f"Sex inference saved in: {basename}_imputed_sex_results.tsv")
+                continue
+        
                 
 
 
@@ -228,8 +229,8 @@ def impute_sex(mt):
     
     imputed_sex = hl.impute_sex(mt.GT, aaf_threshold=0.05, female_threshold=0.5, male_threshold=0.75)  # Imputed sex with suggested thresholds
     sex_expr = hl.if_else(hl.is_defined(imputed_sex.is_female), hl.if_else(imputed_sex.is_female, # rename imputed sex
-                                                                        "female",
-                                                                        "male"),
+                                                                        "XX",
+                                                                        "XY"),
                                                                         "undefined")
     sex_ht = imputed_sex.annotate(imputed_sex=sex_expr)
 

@@ -60,7 +60,7 @@ def split_multiallelic(mt, original_size):
     if config['verbosity']: 
         after_splitting = mt.count()
         summary.append(["Splitting multiallelic variants", original_size[0], after_splitting[0]])
-        logging.info(f"Number of multiallelic variants: {original_size[0] - after_splitting[0]}   ")
+        logging.info(f"Number of multiallelic variants: {after_splitting[0] - original_size[0]}   ")
         csv_writer(summary)
     
     return mt
@@ -241,9 +241,13 @@ def variant_filtering(mt):
             
             if config['verbosity']:
                 stats = create_stats(mt, "info.DP", "rows")
-                summary = verbosity_counts_variants(mt, "DP", mt.info.DP >= config['variant_filters']['DP_threshold'], summary, stats)
+                summary = verbosity_counts_variants(mt, "DP", 
+                                                    (hl.is_missing(mt.info.DP)) | (mt.info.DP >= config['variant_filters']['DP_threshold']), 
+                                                    summary, 
+                                                    stats)
 
-            mt = mt.filter_rows(mt.info.DP >= config['variant_filters']['DP_threshold'])       
+            mt = mt.filter_rows(hl.is_missing(mt.info.DP) | (mt.info.DP >= config['variant_filters']['DP_threshold']))     
+
             logging.info("DP filtering done")   
             
         else:
@@ -251,11 +255,13 @@ def variant_filtering(mt):
             summary.append(["DP", "-", "-", "-", "Not available"])
 
     if config['variant_filters']['QUAL_threshold'] is not None:
+
         try:
             if config['verbosity']:
 
                 stats = create_stats(mt, "qual", "rows")
                 summary = verbosity_counts_variants(mt, "QUAL", mt.qual >= config['variant_filters']['QUAL_threshold'], summary, stats)
+            
             
             mt = mt.filter_rows(mt.qual >= config['variant_filters']['QUAL_threshold'])
             logging.info("QUAL filtering done")
@@ -318,19 +324,31 @@ def sample_filtering(mt, sequencingType):
     # Compute sample QC
     mt = hl.sample_qc(mt)
 
+    # Open summary
+    if config['verbosity']:
+        summary = []
+        summary.append([])
+        summary.append(["Sample Filtering Steps"])
+        summary.append(["Filter", "Before", "After", "Removed", "Stats"])
+
     # Compute CHARR
-    if config['ref_gen'] == "GRCh37": 
-        if not config.get('gnomad_sites_GRCh37') or config['gnomad_sites_GRCh37'].strip() == '':
-            logging.error("gnomAD sites GRCh37 path is empty or not configured - check your conf.py")
+    try:
+        if config['ref_gen'] == "GRCh37": 
+            if not config.get('gnomad_sites_GRCh37') or config['gnomad_sites_GRCh37'].strip() == '':
+                logging.error("gnomAD sites GRCh37 path is empty or not configured - check your conf.py")
+            else:
+                mt = run_charr(mt, config['gnomad_sites_GRCh37'])
+        elif config['ref_gen'] == "GRCh38": 
+            if not config.get('gnomad_sites_GRCh38') or config['gnomad_sites_GRCh38'].strip() == '':
+                logging.error("gnomAD sites GRCh83 path is empty or not configured - check your conf.py")
+            else:
+                mt = run_charr(mt, config['gnomad_sites_GRCh38'])       
         else:
-            mt = run_charr(mt, config['gnomad_sites_GRCh37'])
-    elif config['ref_gen'] == "GRCh38": 
-        if not config.get('gnomad_sites_GRCh38') or config['gnomad_sites_GRCh38'].strip() == '':
-            logging.error("gnomAD sites GRCh83 path is empty or not configured - check your conf.py")
-        else:
-            mt = run_charr(mt, config['gnomad_sites_GRCh38'])       
-    else:
-        logging.error("The value inserted as ref_gen is not valid. Please, choose between GRCh37 and GRCh38")
+            logging.error("The value inserted as ref_gen is not valid. Please, choose between GRCh37 and GRCh38")
+    except ValueError as e: 
+        logging.error("CHARR couldn't be calculated:")
+        logging.error("%r", e)
+        summary.append("CHARR couldn't be calculated.", e)
 
 
     config['verbosity'] = True
@@ -339,11 +357,6 @@ def sample_filtering(mt, sequencingType):
         logging.info("Creating Sample Filters plots")
         create_sample_plot(mt)
 
-    if config['verbosity']:
-        summary = []
-        summary.append([])
-        summary.append(["Sample Filtering Steps"])
-        summary.append(["Filter", "Before", "After", "Removed", "Stats"])
 
     # Minimum coverage filtering
     if config['sample_filters']['DP_STATS.MEAN_WES_threshold'] is not None or config['sample_filters']['DP_STATS.MEAN_WGS_threshold'] is not None:
@@ -358,7 +371,7 @@ def sample_filtering(mt, sequencingType):
                             passing=hl.agg.count_where(mt.sample_qc.dp_stats.mean >= min_coverage)
                             )
                 )   
-            logging.info(f"Minimum Coverage filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            logging.info(f"Minimum Coverage filtering done - Samples removed: {repo_stats.total - repo_stats.passing}  ")
             summary.append(["Minimum Coverage", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
             
             mt = mt.filter_cols(mt.sample_qc.dp_stats.mean >= min_coverage)
@@ -381,7 +394,7 @@ def sample_filtering(mt, sequencingType):
                             passing=hl.agg.count_where((mt.sample_qc.r_ti_tv >= lower) & (mt.sample_qc.r_ti_tv <= upper))
                             )
                 )   
-            logging.info(f"Ti/Tv ratio filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            logging.info(f"Ti/Tv ratio filtering done - Samples removed: {repo_stats.total - repo_stats.passing}  ")
             summary.append(["Ti/Tv ratio", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
             
             mt = mt.filter_cols((mt.sample_qc.r_ti_tv >= lower) & (mt.sample_qc.r_ti_tv <= upper))
@@ -401,7 +414,7 @@ def sample_filtering(mt, sequencingType):
                             passing=hl.agg.count_where(mt.sample_qc.call_rate >= config['sample_filters']['CALL_RATE_threshold'])
                             )
                 )   
-            logging.info(f"Call rate filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            logging.info(f"Call rate filtering done - Samples removed: {repo_stats.total - repo_stats.passing}  ")
             summary.append(["Call rate", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
 
             mt = mt.filter_cols(mt.sample_qc.call_rate >= config['sample_filters']['CALL_RATE_threshold'])
@@ -423,7 +436,7 @@ def sample_filtering(mt, sequencingType):
                             passing=hl.agg.count_where(mt.sample_qc.n_singleton <= hard_cutoff)
                             )
                 )   
-            logging.info(f"Singletons filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            logging.info(f"Singletons filtering done - Samples removed: {repo_stats.total - repo_stats.passing}  ")
             summary.append(["Singletons", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
 
             mt = mt.filter_cols(mt.sample_qc.n_singleton <= hard_cutoff)
@@ -444,7 +457,7 @@ def sample_filtering(mt, sequencingType):
                             passing=hl.agg.count_where(mt.charr <= config['sample_filters']['CHARR_threshold'])
                             )
                 )   
-            logging.info(f"CHARR filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+            logging.info(f"CHARR filtering done - Samples removed: {repo_stats.total - repo_stats.passing}  ")
             summary.append(["CHARR", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
                 
             mt = mt.filter_cols(mt.charr <= config['sample_filters']['CHARR_threshold']) # Filter samples with charr over the threshold
@@ -455,6 +468,10 @@ def sample_filtering(mt, sequencingType):
         except LookupError:
             logging.info("CHARR couldn't be calculated")
             summary.append(["CHARR", "-", "-", "-", "Not available"])
+        except ValueError as e:
+            logging.info("CHARR couldn't be calculated.", e)
+            summary.append("CHARR couldn't be calculated.", e)
+
 
 
     # Het/Hom ratio filtering
@@ -468,7 +485,7 @@ def sample_filtering(mt, sequencingType):
                             passing=hl.agg.count_where(mt.sample_qc.r_het_hom_var <= hard_cutoff)
                             )
                 )   
-                logging.info(f"Het/Hom ratio filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
+                logging.info(f"Het/Hom ratio filtering done - Samples removed: {repo_stats.total - repo_stats.passing}  ")
                 summary.append(["Het/Hom ratio", repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
                 
             mt = mt.filter_cols(mt.sample_qc.r_het_hom_var <= hard_cutoff)

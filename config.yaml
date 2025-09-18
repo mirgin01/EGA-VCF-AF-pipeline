@@ -1,10 +1,10 @@
 ## PATHS
-vcf_dir : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read/" # all the VCFs in this folder must be from the same reference genome
-vcf_for_header : "/home/mireia/Bioinfo/Beacon/beacon2-ri-tools-v2/files/vcf/files_to_read/gonl-1-variant.vcf"  # the final VCF will have parts of this header
+vcf_dir : "" # all the VCFs in this folder must be from the same reference genome
+vcf_for_header : ""  # the final VCF will have parts of this header
 ref_gen : "GRCh37" # reference genome from the VCFs
-mt_from_vcf : "/home/mireia/Bioinfo/Hail_folder/gonl_subset3000.mt" # path where the original matrix will be saved
+mt_from_vcf : "" # path where the original matrix will be saved
 seq_type : "WGS" # sequencing typw
-mt_afterQC : "/home/mireia/Bioinfo/Hail_folder/gonl_AFTERQC.mt" # path where the after QC matrix will be
+mt_afterQC : "" # path where the after QC matrix will be
 
 ## LOGs
 verbosity : true # if true a csv with variants deleted per step will be create. This increases the execution time.
@@ -47,8 +47,8 @@ sample_filters:
   N_SINGLETON_WGS_threshold : 100000
   N_SINGLETON_WES_threshold : 5000 
   CHARR_threshold : 0.05
-  R_TI_TV_WES_threshold : [3.0 , 3.3]
-  R_TI_TV_WGS_threshold : [2.0 , 2.1]
+  R_TI_TV_WES_threshold : #[3.0 , 3.3]
+  R_TI_TV_WGS_threshold : #[2.0 , 2.1]
 gnomad_sites_GRCh37 : "" # reference for GRCh37 
 gnomad_sites_GRCh38 : "" # reference for GRCh38
 
@@ -59,7 +59,7 @@ table_with_subset : "./variants_for_pca.ht"
 ancestrySNPs : "/home/mireia/GitHub/Hail/workflow/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs
 
 ## AF RECALC
-final_vcf_AF : "/home/mireia/Bioinfo/Hail_folder/GCAT_AF.vcf.bgz" # path for VCF annotated with AFs
+final_vcf_AF : "/home/mireia/Bioinfo/Hail_folder/GCAT_AF_hemi_hap_rewritten.vcf.bgz" # path for VCF annotated with AFs
 
 ## EXPORT FINAL VCF
 summary_VCF : false # if true the output VCF wont contain ANY information about the samples and their genotypes
