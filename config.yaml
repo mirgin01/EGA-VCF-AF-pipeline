@@ -1,5 +1,5 @@
 ## PATHS
-vcf_dir : "" # all the VCFs in this folder must be from the same reference genome
+vcf_dir : "" # all the VCFs in this folder must be from the same reference genome. Note: The path must end with /
 vcf_for_header : ""  # the final VCF will have parts of this header
 ref_gen : "GRCh37" # reference genome from the VCFs
 mt_from_vcf : "" # path where the original matrix will be saved
