@@ -210,7 +210,7 @@ All parameters and module executions are controlled via `config.yaml`. Example:
 
 ```yaml
 ## PATHS
-vcf_dir : " " # all the VCFs in this folder will be converted to a Hail matrix. They must be from the same reference genome.
+vcf_dir : " " # all the VCFs in this folder will be converted to a Hail matrix. They must be from the same reference genome. (Note: The path must end in /)
 ref_gen : " " # reference genome from the VCFs (OPTIONS: GRCh37 / GRCh38)
 mt_from_vcf : " " # path where the original matrix will be saved
 seq_type : " " # sequencing type (OPTIONS: WGS / WES)
