@@ -11,6 +11,7 @@ import os
 _timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 _name_only = None 
 
+
 def get_name():
     """
     Checks if name_only has been created. If not, create a global variable for the log and workflow name
@@ -70,11 +71,13 @@ def load_logging():
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s]: %(message)s",
         handlers=[
-            logging.FileHandler(f"{name_only}.log", mode='w'),
+            logging.FileHandler(f"{name_only}.log", mode='w', encoding="utf-8", delay=True),
             logging.StreamHandler()
         ]
     )
+
     logging.info(f"LOG SAVED IN: {name_only}.log")
+    
 
 def create_sample_plot(mt): 
     """
@@ -245,7 +248,73 @@ def impute_sex(mt):
 
     return mt
 
+def print_config(d, prefix=""):
+    """
+    Add config options to log
+    """
+    if isinstance(d, dict):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                logging.info(f" {prefix}{k}:")
+                print_config(v, prefix + "  ")
+            else:
+                logging.info(f" {prefix}{k} : {v}")
+    else:
+        logging.info(f" {prefix}{d}")
+
+
 config = load_config()
+
+def rename_chr(mt, ref_gen): 
+    """
+    Rename chromosomes 23 and 24 to X and Y respectively if they exist.
+    
+    :parms:
+    mt : MatrixTable
+        Input Hail MatrixTable
+    reference_genome : str
+        Reference genome name (default: 'GRCh38')
+    
+    :return: mt with renamed chromosomes
+    """
+    
+    # Get unique contigs in the MatrixTable
+    contigs = mt.aggregate_rows(hl.agg.collect_as_set(mt.locus.contig))
+    
+    # Check if '23' or '24' exist in the contigs
+    has_23 = 'X' in contigs
+    has_24 = '24' in contigs
+    
+    # Create mapping dictionary
+    contig_map = {}
+    if has_23:
+        contig_map['23'] = 'X'
+        logging.info("Renaming chromosome 23 to X")
+    if has_24:
+        contig_map['24'] = 'Y'
+        logging.info("Renaming chromosome 24 to Y")
+    
+    # Create new locus with renamed contigs
+    new_locus = hl.locus(
+        hl.literal(contig_map).get(mt.locus.contig, mt.locus.contig),
+        mt.locus.position,
+        reference_genome=ref_gen
+    )
+    
+    # Check if alleles is part of the key
+    original_key = list(mt.row_key)
+    has_alleles_key = 'alleles' in original_key
+    
+    # Use key_rows_by to modify the locus key
+    if has_alleles_key:
+        mt = mt.key_rows_by(locus=new_locus, alleles=mt.alleles)
+    else:
+        mt = mt.key_rows_by(locus=new_locus)
+    
+    logging.info(f"Chromosome renaming completed.")
+    
+    return mt
+
 
 """mt = hl.read_matrix_table(config['mt_from_vcf'])
 create_stats_samples(mt, mt.sample_qc.dp_stats)"""

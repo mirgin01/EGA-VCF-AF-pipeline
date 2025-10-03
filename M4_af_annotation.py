@@ -2,7 +2,6 @@ import hail as hl
 import logging
 from utils import *
 
-load_logging()
 config = load_config()
 
 def stats_by_sex(mt):

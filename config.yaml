@@ -1,10 +1,10 @@
 ## PATHS
-vcf_dir : "" # all the VCFs in this folder must be from the same reference genome
-vcf_for_header : ""  # the final VCF will have parts of this header
+vcf_dir : "convert-fixed/" # all the VCFs in this folder must be from the same reference genome
+vcf_for_header : "GCAT_recalc_chrX_hemi.vcf.bgz"  # the final VCF will have parts of this header
 ref_gen : "GRCh37" # reference genome from the VCFs
-mt_from_vcf : "" # path where the original matrix will be saved
+mt_from_vcf : "GCAT_chrX" # path where the original matrix will be saved
 seq_type : "WGS" # sequencing typw
-mt_afterQC : "" # path where the after QC matrix will be
+mt_afterQC : "GCAT_chrX_afterQC" # path where the after QC matrix will be
 
 ## LOGs
 verbosity : true # if true a csv with variants deleted per step will be create. This increases the execution time.
@@ -12,16 +12,18 @@ plots: false # create box plot showing the distribution of each QC sample parame
 
 ## MODULES TO RUN
 preprocessing : false # if true the module will be run
-delete_related: false
-ancestry : false
+delete_related: true
+ancestry : true
 af_annotation : true
 
 ## PREPROCESSING STEPS
-convert_vcfs : false # if true the module will be run
-split_multiallelic : false
-genotype_filtering : false
-variant_filtering : false
+convert_vcfs : true # if true the module will be run
+split_multiallelic : true
+genotype_filtering : true
+variant_filtering : true
 sample_filtering : true
+
+# Note: If you don't want to run certain filtering step add a hash sign before the thresholds value (e.g QD_threshold : #2.0 )
 
 ## VARIANT FILTERING THRESHOLDS
 variant_filters:

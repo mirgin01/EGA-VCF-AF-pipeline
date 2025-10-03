@@ -25,10 +25,13 @@ hl.init(
 def main():
     
     config = load_config()
-    load_logging() # create proper logs 
 
-    logging.info(f"+++ Running EGA standard VCF workflow v1 +++")
+    logging.info(f"=== Pipeline settings ===")
 
+    print_config(config)
+
+    logging.info(f"=========================")
+    logging.info(f"+++ RUNNING EGA STANDARD VCF WORKFLOW v1 +++")
     csv_creator() 
     summary = []
 
@@ -47,6 +50,8 @@ def main():
 
         original_size = mt.count() 
         logging.info(f"Original dataset size. Variants: {original_size[0]}, Samples: {original_size[1]}   ")
+
+        rename_chr(mt, config['ref_gen'])
 
         if config['split_multiallelic']:
             mt = split_multiallelic(mt, original_size)
@@ -88,6 +93,8 @@ def main():
         summary.append(["Original dataset size", original_size[0], original_size[1]])
         csv_writer(summary)
 
+        rename_chr(mt, config['ref_gen'])
+
     ## DELETE RELATED SAMPLES
     
     if config["delete_related"]:
@@ -125,15 +132,16 @@ def main():
         else:
             results_ancestry_agg = ""
 
-        mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_ancestry = af_by_sex_ancestry(mt,
+        mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry = af_by_sex_ancestry(mt,
                                                                                              results_sex_agg,
                                                                                              results_ancestry_agg)
 
-        mt = annotate_new_vcf(mt, AF_total, AC_total, AN_total, AC_hom_total, AF_sex, AF_ancestry)
+        mt = annotate_new_vcf(mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry)
         export_new_vcf(mt)
 
 
 
 
 if __name__ == "__main__":
+    load_logging() # create proper logs 
     main()

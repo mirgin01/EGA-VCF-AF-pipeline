@@ -128,10 +128,15 @@ def genotype_filtering(mt):
             mt = mt.annotate_entries(
                 GT = hl.if_else(mt.GQ >= config['genotype_filters']['GQ_threshold'], mt.GT, hl.null(mt.GT.dtype))
                 ) # set non passing GT to NULL 
+
         else:
-            logging.info("GQ information not available")
+            logging.error("GQ information not available - terminating pipeline")
             summary.append(["Filter", "Before", "After", "Removed", "Status"])
             summary.append(["GQ", "-", "-", "-", "Not available"])
+            raise ValueError("GQ information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+
+    else: 
+        logging.warning("GQ threshold not set - GQ filtering not performed ")
 
     # AB filtering
     if config['genotype_filters']['AB_threshold'] is not None:
@@ -191,15 +196,17 @@ def genotype_filtering(mt):
                 
                 summary.append(["AlleleBalance", pre_ab_stats.defined_GT, post_ab_stats.defined_GT, genotypes_removed_ab, clean_stats])
         else:
-            logging.info("Allele Balance information not available")
+            logging.error("Allele Balance information not available - terminating pipeline")
             summary.append(["Filter", "Before", "After", "Removed", "Status"])
             summary.append(["AlleleBalance (Genotypes)", "-", "-", "-", "Not available"])
-    
+            raise ValueError("AB information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else: 
+        logging.warning("AB threshold not set - AB filtering not performed ")
       
     csv_writer(summary)
 
     
-    return mt
+    return mt 
 
 
 def variant_filtering(mt):
@@ -232,8 +239,11 @@ def variant_filtering(mt):
             logging.info("QD filtering done")
         
         else:
-            logging.info("QD information not available")
+            logging.error("QD information not available - terminating pipeline")
             summary.append(["QD", "-", "-", "-", "Not available"])
+            raise ValueError("QD information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else:
+        logging.warning("QD threshold not set - QD filtering not performed ")
     
     if config['variant_filters']['DP_threshold'] is not None:
         
@@ -251,8 +261,12 @@ def variant_filtering(mt):
             logging.info("DP filtering done")   
             
         else:
-            logging.info("DP information not available")
+            logging.error("DP information not available - terminating pipeline")
             summary.append(["DP", "-", "-", "-", "Not available"])
+            raise ValueError("DP information is not available. To proceed with filtering, guradd a hash sign to the threshold value to inactivate the metrication and perform quality control without this step.")
+
+    else: 
+        logging.warning("DP threshold not set - DP filtering not performed ")
 
     if config['variant_filters']['QUAL_threshold'] is not None:
 
@@ -267,8 +281,11 @@ def variant_filtering(mt):
             logging.info("QUAL filtering done")
         
         except TypeError:
-            logging.info("QUAL information not available")
+            logging.error("QUAL information not available - terminating pipeline")
             summary.append(["QUAL", "-", "-", "-", "Not available"])
+            raise ValueError("QUAL information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else: 
+        logging.warning("QUAL threshold not set - QUAL filtering not performed ")
 
     if config['variant_filters']['MQ_threshold'] is not None:
         if "MQ" in mt.info:
@@ -279,8 +296,11 @@ def variant_filtering(mt):
             mt = mt.filter_rows(mt.info.MQ >= config['variant_filters']['MQ_threshold'])
             logging.info("MQ filtering done")
         else:
-            logging.info("MQ information not available")
+            logging.error("MQ information not available - terminating pipeline")
             summary.append(["MQ", "-", "-", "-", "Not available"])
+            raise ValueError("MQ information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else: 
+        logging.warning("MQ threshold not set - MQ filtering not performed ")
 
     if config['variant_filters']['FS_threshold'] is not None:
         if "FS" in mt.info:
@@ -291,8 +311,11 @@ def variant_filtering(mt):
             mt = mt.filter_rows(mt.info.FS <= config['variant_filters']['FS_threshold'])
             logging.info("FS filtering done")
         else:
-            logging.info("FS information not available")
+            logging.error("FS information not available - terminating pipeline")
             summary.append(["FS", "-", "-", "-", "Not available"])
+            raise ValueError("FS information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else: 
+        logging.warning("FS threshold not set - FS filtering not performed ")
 
     if config['variant_filters']['READPOSRANKSUM_threshold'] is not None:
         if "ReadPosRankSum" in mt.info:
@@ -303,8 +326,12 @@ def variant_filtering(mt):
             mt = mt.filter_rows(mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
             logging.info("ReadPosRankSum filtering done")
         else:
-            logging.info("ReadPosRankSum information not available")
+            logging.error("ReadPosRankSum information not available - terminating pipeline")
             summary.append(["ReadPosRankSum", "-", "-", "-", "Not available"])
+            raise ValueError("ReadPosRankSum information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    
+    else: 
+        logging.warning("READPOSRANKSUM threshold not set - READPOSRANKSUM filtering not performed ")
 
     csv_writer(summary)
 
@@ -349,7 +376,8 @@ def sample_filtering(mt, sequencingType):
         logging.error("CHARR couldn't be calculated:")
         logging.error("%r", e)
         summary.append("CHARR couldn't be calculated.", e)
-
+        raise ValueError("CHARR information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    
 
     config['verbosity'] = True
 
@@ -379,7 +407,10 @@ def sample_filtering(mt, sequencingType):
         
         else:
             summary.append(["Minimum Coverage", "-", "-", "-", "Not available"])
-            logging.info("DP information not available")
+            logging.error("DP information not available - terminating pipeline")
+            raise ValueError("DP information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else:
+        logging.warning("DP threshold not set - DP filtering not performed ")
 
     # ti/tv ratio filtering
     if config['sample_filters']['R_TI_TV_WES_threshold'] is not None or config['sample_filters']['R_TI_TV_WGS_threshold'] is not None:
@@ -402,7 +433,10 @@ def sample_filtering(mt, sequencingType):
             
         else:
             summary.append(["Ti/Tv Ratio", "-", "-", "-", "Not available"])
-            logging.info("Ti/Tv information not available")
+            logging.error("Ti/Tv information not available - terminating pipeline")
+            raise ValueError("Ti/Tv ratio information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else: 
+        logging.warning("Ti/Tv ratio threshold not set - Ti/Tv filtering not performed ")
 
     # Call rate filtering
     if config['sample_filters']['CALL_RATE_threshold'] is not None: 
@@ -422,7 +456,11 @@ def sample_filtering(mt, sequencingType):
         
         else:
             summary.append(["Call Rate", "-", "-", "-", "Not available"])
-            logging.info("Call rate information not available")
+            logging.error("Call rate information not available - terminating pipeline")
+            raise ValueError("Call rate information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+
+    else:
+        logging.warning("Call rate threshold not set - Call rate filtering not performed ")
 
 
     # Singletons filtering
@@ -443,7 +481,10 @@ def sample_filtering(mt, sequencingType):
             logging.info("Singleton filtering done")
         else:
             summary.append(["Singletons", "-", "-", "-", "Not available"])
-            logging.info("Number of singletons not available")
+            logging.error("Number of singletons not available - terminating pipeline")
+            raise ValueError("Singletons information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else: 
+        logging.warning("Number of singletons threshold not set - Singleton filtering not performed ")
 
 
     # CHARR filtering 
@@ -463,15 +504,19 @@ def sample_filtering(mt, sequencingType):
             mt = mt.filter_cols(mt.charr <= config['sample_filters']['CHARR_threshold']) # Filter samples with charr over the threshold
             logging.info("CHARR filtering done")
         except TypeError:
-            logging.info("CHARR couldn't be calculated")
+            logging.error("CHARR couldn't be calculated - terminating pipeline")
             summary.append(["CHARR", "-", "-", "-", "Not available"])
+            raise ValueError("CHARR information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
         except LookupError:
-            logging.info("CHARR couldn't be calculated")
+            logging.error("CHARR couldn't be calculated - terminating pipeline")
             summary.append(["CHARR", "-", "-", "-", "Not available"])
+            raise ValueError("CHARR information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
         except ValueError as e:
-            logging.info("CHARR couldn't be calculated.", e)
+            logging.error("CHARR couldn't be calculated - terminating pipeline", e)
             summary.append("CHARR couldn't be calculated.", e)
-
+            raise ValueError("CHARR information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else:
+        logging.warning("CHARR threshold not set - CHARR filtering not performed ")
 
 
     # Het/Hom ratio filtering
@@ -492,7 +537,10 @@ def sample_filtering(mt, sequencingType):
             logging.info("Het/Hom ratio filtering done")
         else:
             summary.append(["Het/Hom Ratio", "-", "-", "-", "Not available"])
-            logging.info("Het/Hom ratio information not available")
+            logging.error("Het/Hom ratio information not available - terminating pipeline")
+            raise ValueError("Het/Hom information is not available. To proceed with filtering, radd a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
+    else: 
+        logging.warning("Het/hom ratio threshold not set - Het/hom ratio filtering not performed ")
 
     if config['verbosity']:
         csv_writer(summary)
