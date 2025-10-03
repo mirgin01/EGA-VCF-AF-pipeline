@@ -282,7 +282,7 @@ def rename_chr(mt, ref_gen):
     contigs = mt.aggregate_rows(hl.agg.collect_as_set(mt.locus.contig))
     
     # Check if '23' or '24' exist in the contigs
-    has_23 = 'X' in contigs
+    has_23 = '23' in contigs
     has_24 = '24' in contigs
     
     # Create mapping dictionary
@@ -294,9 +294,18 @@ def rename_chr(mt, ref_gen):
         contig_map['24'] = 'Y'
         logging.info("Renaming chromosome 24 to Y")
     
+    # Create new contig name using conditional expression
+    new_contig = mt.locus.contig
+    for old_name, new_name in contig_map.items():
+        new_contig = hl.if_else(
+            mt.locus.contig == old_name,
+            new_name,
+            new_contig
+        )
+    
     # Create new locus with renamed contigs
     new_locus = hl.locus(
-        hl.literal(contig_map).get(mt.locus.contig, mt.locus.contig),
+        new_contig,
         mt.locus.position,
         reference_genome=ref_gen
     )
@@ -310,8 +319,7 @@ def rename_chr(mt, ref_gen):
         mt = mt.key_rows_by(locus=new_locus, alleles=mt.alleles)
     else:
         mt = mt.key_rows_by(locus=new_locus)
-    
-    logging.info(f"Chromosome renaming completed.")
+
     
     return mt
 
