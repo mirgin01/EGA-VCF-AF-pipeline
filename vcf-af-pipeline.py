@@ -98,8 +98,12 @@ def main():
     ## DELETE RELATED SAMPLES
     
     if config["delete_related"]:
-        logging.info(f"Deleting minimum number of samples for an unrelated dataset")
-        mt = delete_related_samples(mt)
+        size = mt.count()
+        if size[1] == 1: 
+            logging.info (f"There's only one sample in the dataset - skipping trimming of related individuals")
+        else:
+            logging.info(f"Deleting minimum number of samples for an unrelated dataset")
+            mt = delete_related_samples(mt)
     
     ## ANCESTRY
 
