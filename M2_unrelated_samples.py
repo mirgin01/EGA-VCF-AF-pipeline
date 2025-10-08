@@ -46,6 +46,8 @@ def subset_100000(mt, n_var):
     # Sample rows (variants)
     mt_for_pca = mt.sample_rows(fraction, seed=12345)  # Added seed for reproducibility
     
+    # Check point to avoid Hail bug
+    mt_for_pca = mt_for_pca.checkpoint(config['table_with_subset'], overwrite=True)
     # Write the subset variant information
     mt_for_pca.rows().write(config['table_with_subset'], overwrite=True)
     

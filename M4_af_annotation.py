@@ -197,7 +197,7 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
                 hl.int32(0)  # Autosomal variants: no hemizygotes
             )
 
-            AF_ancestry[f"nhet_{ancestry}_recalc"] = AF_sex[f"AC_{ancestry}_recalc"] - 2*(AF_sex[f"nhom_{ancestry}_recalc"]) - AF_sex[f"nhemi_{ancestry}_recalc"] # heterozygous count
+            AF_ancestry[f"nhet_{ancestry}_recalc"] = AF_ancestry[f"AC_{ancestry}_recalc"] - 2*(AF_ancestry[f"nhom_{ancestry}_recalc"]) - AF_ancestry[f"nhemi_{ancestry}_recalc"] # heterozygous count
     else:
         AF_ancestry={}
 

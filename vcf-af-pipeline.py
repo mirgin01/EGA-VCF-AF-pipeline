@@ -72,8 +72,10 @@ def main():
 
         if final_size[0] == 0:
             logging.error("All the variants were deleted by the quality control - stopping the pipeline")
+            raise ValueError(f"Empty dataset - ALL the variants were deleted by the quality control - Aborting execution")
         if final_size[1] == 0:
             logging.error("All the samples were deleted by the quality control - stopping the pipeline")
+            raise ValueError(f"Empty dataset - ALL the samples were deleted by the quality control - Aborting execution")
         else:
             mt.write(config['mt_afterQC'], overwrite=True)  # write matrix with QC 
             logging.info(f"MT with QC written in: {config['mt_afterQC']}")
