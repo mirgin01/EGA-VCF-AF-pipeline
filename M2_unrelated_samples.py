@@ -43,21 +43,15 @@ def subset_100000(mt, n_var):
     
     logging.info(f"Sampling fraction: {fraction}    ")
     
-    # Sample rows (variants)
-    mt_for_pca = mt.sample_rows(fraction, seed=12345)  # Added seed for reproducibility
-    
-    # Check point to avoid Hail bug
-    mt_for_pca = mt_for_pca.checkpoint(config['table_with_subset'], overwrite=True)
-    # Write the subset variant information
-    mt_for_pca.rows().write(config['table_with_subset'], overwrite=True)
-    
-    # Read back the rows table and semi-join with original matrix
-    subset_rows = hl.read_table(config['table_with_subset'])
-    mt_filtered = mt.semi_join_rows(subset_rows)
-    
+    # Checkpoint to materialize any pending operations before sampling
+    mt = mt.checkpoint(hl.utils.new_temp_file(extension='mt'))
+    # Sample rows 
+    mt_filtered = mt.sample_rows(fraction, seed=12345)
+
     # Verify the final count
     final_n_rows, final_n_cols = mt_filtered.count()
-    logging.info(f"Number of variants and samples for PCA: {final_n_rows}, {final_n_cols}   ")
+    logging.info(f"Number of variants and samples for PCA: {final_n_rows}, {final_n_cols}")
+
     
     return mt_filtered
 
@@ -142,7 +136,7 @@ def delete_related_samples(mt):
     logging.info(f"Dataset size after relatedness trimming. Variants: {after_rel_trim[0]}, Samples: {after_rel_trim[0]}   ")
     if config['verbosity']:
             summary = []
-            summary.append(["Dataset size after relatedness trimming", after_rel_trim[0], after_rel_trim[0]])
+            summary.append(["Dataset size after relatedness trimming", after_rel_trim[0], after_rel_trim[1]])
             csv_writer(summary)
 
     return mt 

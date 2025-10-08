@@ -184,7 +184,7 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
             # Create the key for this ancestry + XY combination
             ancestry_xy_key = hl.struct(ancestry=ancestry, sex="XY")
 
-            AF_ancestry[f"hemizygotes_{ancestry}_recalc"] = hl.if_else(
+            AF_ancestry[f"nhemi{ancestry}_recalc"] = hl.if_else(
                 ~mt.locus.in_autosome_or_par(),
                 # For sex chromosomes, get the XY subset of this specific ancestry
                 hl.if_else(
