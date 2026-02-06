@@ -38,6 +38,8 @@ If sex and ancestry cannot be inferred from genomic data, sex-based and ancestry
 
 ## Requirements and Installation
 
+## Option 1: Locally
+
 ### 1. Install Hail 
 
 On a recent Debian-like system, the following should suffice
@@ -97,6 +99,9 @@ To download the reference data:
 ```
 gsutil cp -r gs://gcp-public-data--gnomad/release/4.1/ht/genomes/gnomad.genomes.v4.1.sites.ht/ .
 ```
+## Option 2: Docker
+
+See ADD LINK to use this pipeline inside a Docker container. 
 
 ### 4. Clone the repository 
 

@@ -103,7 +103,7 @@ def delete_related_indv(mt, mt_filtered):
     samples_to_remove = related_samples_to_remove.collect() 
 
     basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))
-    with open(f"./{basename}_related_samples_deleted", "a") as file: # Save removed sample ID into a file
+    with open(f"./{basename}_related_samples_deleted.txt", "a") as file: # Save removed sample ID into a file
         for sample in samples_to_remove:
             file.write(f"{sample['node']}\n")
 
@@ -133,7 +133,7 @@ def delete_related_samples(mt):
 
     after_rel_trim = mt.count() 
 
-    logging.info(f"Dataset size after relatedness trimming. Variants: {after_rel_trim[0]}, Samples: {after_rel_trim[0]}   ")
+    logging.info(f"Dataset size after relatedness trimming. Variants: {after_rel_trim[0]}, Samples: {after_rel_trim[1]}   ")
     if config['verbosity']:
             summary = []
             summary.append(["Dataset size after relatedness trimming", after_rel_trim[0], after_rel_trim[1]])

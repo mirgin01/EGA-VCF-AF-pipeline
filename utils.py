@@ -87,59 +87,76 @@ def create_sample_plot(mt):
     """
     sample_thresholds = config['sample_filters']
 
-    try: 
-        table = mt.cols().select('sample_qc', 'imputed_sex', 'charr')
-        df = table.to_pandas()
+    if config["infer_sex"]: 
+        # Impute and export inferred sex for the samples 
+        mt = impute_sex(mt)
+        
+    # 1. Check what columns actually exist in the MatrixTable
+    available_cols = list(mt.col.dtype.keys())
+    has_sex = 'imputed_sex' in available_cols
+    has_charr = 'charr' in available_cols
 
-    except LookupError as e: # if charr is not computed
-        table = mt.cols().select('sample_qc', 'imputed_sex')
-        df = table.to_pandas()
+    # 2. Build the selection list dynamically
+    select_fields = ['sample_qc']
+    if has_sex:
+        select_fields.append('imputed_sex')
+    if has_charr:
+        select_fields.append('charr')
+
+    # Convert to pandas
+    table = mt.cols().select(*select_fields)
+    df = table.to_pandas()
+
+    stats = ['sample_qc.dp_stats.mean', 'sample_qc.call_rate',
+            'sample_qc.r_het_hom_var', 'sample_qc.n_singleton', 'sample_qc.r_ti_tv']
     
-        stats = ['sample_qc.dp_stats.mean', 'sample_qc.call_rate',
-                'sample_qc.r_het_hom_var', 'sample_qc.n_singleton', 'charr', 'sample_qc.r_ti_tv']
+    if has_charr:
+        stats.append('charr')
 
-        for metric in stats: 
+    for metric in stats: 
+        
+        try:
+            plt.figure()
+
+            # 3. Conditional plotting based on sex availability
+            if has_sex:
+                df.boxplot(column=metric, by="imputed_sex")
+            else:
+                df.boxplot(column=metric) # Single group plot
+
+            # Extract the field name as used in the config
+            if metric == "sample_qc.dp_stats.mean": 
+                config_key = '.'.join(metric.split('.')[-2:]).upper()
+            else:
+                config_key = metric.split('.')[-1].upper()
             
-            try:
-                plt.figure()
-
-                # Plot boxplot
-                df.boxplot(column = metric, by = "imputed_sex")
-
-                # Extract the field name as used in the config
-                if metric == "sample_qc.dp_stats.mean": 
-                    config_key = '.'.join(metric.split('.')[-2:]).upper()
-                else:
-                    
-                    config_key = metric.split('.')[-1].upper()
-                
-                # get threshold from config
-                threshold = sample_thresholds.get(f"{config_key}_{config['seq_type']}_threshold", None) # fields where treshold depends on seq type
-                
-                if threshold is None: # threshold for the fields that doesnt depend on the seq type
-                    threshold = sample_thresholds.get(f"{config_key}_threshold", None)
-                
-                if threshold is not None:
-                    if isinstance(threshold, (list, tuple)) and len(threshold) == 2: # when threshold is an interval
-                        lower, upper = threshold
-                        plt.axhline(y=lower, color='red', linestyle='--', label='Lower Threshold')
-                        plt.axhline(y=upper, color='orange', linestyle='--', label='Upper Threshold') 
-                    else:    
-                        plt.axhline(y=threshold, color='red', linestyle='--', label='Threshold')
-                    
-                    plt.legend() 
-
-                plt.title(f'{metric}') # set title and label for the plot
-                plt.ylabel(metric)
-
-                name_only = get_name() # get name depending on the file working with 
-                
-                plt.savefig(f'{name_only}_{metric}.png')
-                plt.clf()
+            # get threshold from config
+            threshold = sample_thresholds.get(f"{config_key}_{config['seq_type']}_threshold", None) # fields where treshold depends on seq type
             
-            except KeyError:
-                print(f"Skipping metric due to KeyError: {metric}")
-                continue
+            if threshold is None: # threshold for the fields that doesnt depend on the seq type
+                threshold = sample_thresholds.get(f"{config_key}_threshold", None)
+            
+            if threshold is not None:
+                if isinstance(threshold, (list, tuple)) and len(threshold) == 2: # when threshold is an interval
+                    lower, upper = threshold
+                    plt.axhline(y=lower, color='red', linestyle='--', label='Lower Threshold')
+                    plt.axhline(y=upper, color='orange', linestyle='--', label='Upper Threshold') 
+                else:    
+                    plt.axhline(y=threshold, color='red', linestyle='--', label='Threshold')
+                
+                plt.legend() 
+
+            plt.title(f'{metric}') # set title and label for the plot
+            plt.ylabel(metric)
+
+            name_only = get_name() # get name depending on the file working with 
+            
+            plt.savefig(f'{name_only}_{metric}.png')
+            plt.clf()
+        
+        except KeyError:
+            print(f"Skipping metric due to KeyError: {metric}")
+            continue
         
                 
 

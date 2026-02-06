@@ -34,6 +34,7 @@ def main():
     logging.info(f"+++ RUNNING EGA STANDARD VCF WORKFLOW v1 +++")
     csv_creator() 
     summary = []
+    basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))
 
     ## PREPROCESSING
     
@@ -51,7 +52,7 @@ def main():
         original_size = mt.count() 
         logging.info(f"Original dataset size. Variants: {original_size[0]}, Samples: {original_size[1]}   ")
 
-        rename_chr(mt, config['ref_gen'])
+        mt = rename_chr(mt, config['ref_gen'])
 
         if config['split_multiallelic']:
             mt = split_multiallelic(mt, original_size)
@@ -59,14 +60,9 @@ def main():
             mt = genotype_filtering(mt)
         if config['variant_filtering']:
             mt = variant_filtering(mt)
-
-        # Impute sex for the samples 
-        mt = impute_sex(mt)
-
         if config['sample_filtering']:
-            mt = sample_filtering(mt, config['seq_type'])
+            mt = sample_filtering(mt, config['seq_type'], basename)
                     
-
         final_size = mt.count()
         logging.info(f"After QC dataset size. Variants: {final_size[0]}, Samples: {final_size[1]}   ")
 
@@ -96,7 +92,8 @@ def main():
         csv_writer(summary)
 
         rename_chr(mt, config['ref_gen'])
-
+ 
+    
     ## DELETE RELATED SAMPLES
     
     if config["delete_related"]:
@@ -110,25 +107,34 @@ def main():
     ## ANCESTRY
 
     if config['ancestry']:
-        ancestry_vcf = subset_matrix(mt)
-        if config['preprocessing']:
-            logging.info(f"Ancestry inference done using {config['mt_afterQC']}")
-            ancestry_results = call_grafanc(ancestry_vcf, config['mt_afterQC']) # Annotate Anc to the correct matrix depending on conf.py
-        else:
-            logging.info(f"Ancestry inference done using {config['mt_from_vcf']}")
-            ancestry_results = call_grafanc(ancestry_vcf, config['mt_from_vcf'])
-        
-        if ancestry_results is not None: # if ancestry was inferred annotate the results 
-            mt = annotate_ancestry(ancestry_results, mt)
+        ancestry_vcf, ancestry_snps_count = subset_matrix(mt)
+        if ancestry_snps_count == 0: 
+            logging.error("There are not enough ancestry SNPs to run GrafAnc - aborting ancestry annotation")
+        else: 
+            if config['preprocessing']:
+                logging.info(f"Ancestry inference done using {config['mt_afterQC']}")
+                ancestry_results = call_grafanc(ancestry_vcf, config['mt_afterQC']) # Annotate Anc to the correct matrix depending on conf.py
+            else:
+                logging.info(f"Ancestry inference done using {config['mt_from_vcf']}")
+                ancestry_results = call_grafanc(ancestry_vcf, config['mt_from_vcf'])
+            
+            if ancestry_results is not None: # if ancestry was inferred annotate the results 
+                mt = annotate_ancestry(ancestry_results, mt)
         
 
     ## AF RECALC
 
     if config['af_annotation']:
-        if config['preprocessing'] == False:
-            # Impute sex for the samples 
+        
+        # Create sex groups
+        if config['infer_sex']:
             mt = impute_sex(mt)
-        mt, results_sex_agg = stats_by_sex(mt)
+            mt, results_sex_agg = stats_by_sex(mt)
+        else:            
+            logging.warning("Imputed_sex not found. Skipping sex-stratified stats. This avoids the calculation of hemizygous calls. ")
+            results_sex_agg = {} 
+                
+        # Create ancestry groups
         if config['ancestry']:
             try:
                 mt, results_ancestry_agg = stats_by_ancestry(mt)

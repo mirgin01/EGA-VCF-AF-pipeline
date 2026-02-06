@@ -49,7 +49,7 @@ def subset_matrix(mt):
     summary.append(["Nº of ancestry SNPs", ancestry_counts[0]])
     csv_writer(summary)
 
-    return ancestry_vcf
+    return ancestry_vcf, post_count
 
 def call_grafanc(ancestry_vcf, mt_path):
     """
@@ -57,7 +57,11 @@ def call_grafanc(ancestry_vcf, mt_path):
     :params: VCF with ancestry informative SNPs and path to the original matrix 
     :return: Ancestry information per sample
     """
-    
+    import os, logging
+    logging.info(f"cwd before grafanc: {os.getcwd()}")
+    logging.info(f"/app/data exists? {os.path.exists('/app/data/AncSnpPopAFs.txt')}")
+    logging.info(f"./data exists? {os.path.exists('data/AncSnpPopAFs.txt')}")
+
     # run GrafAnc
     basename = os.path.basename(mt_path.rstrip('/'))  # create name for results file
     name_only = os.path.splitext(basename)[0]   

@@ -54,10 +54,10 @@ def split_multiallelic(mt, original_size):
     summary = []
     summary.append(["Split multiallelic variants"])
     summary.append(["", "Before", "After"])
-
     mt = hl.split_multi_hts(mt)
 
     if config['verbosity']: 
+        
         after_splitting = mt.count()
         summary.append(["Splitting multiallelic variants", original_size[0], after_splitting[0]])
         logging.info(f"Number of multiallelic variants: {after_splitting[0] - original_size[0]}   ")
@@ -339,12 +339,13 @@ def variant_filtering(mt):
     return mt
 
 
-def sample_filtering(mt, sequencingType): 
+def sample_filtering(mt, sequencingType, basename): 
     """
     Applies sample quality control based on the thresholds stated in config.yaml
     :params: mt without sample qc
     :return: mt with sample QCed
     """
+    
     # ensure the sequencing type entered in conf.py is valid
     assert sequencingType in ["WES", "WGS"], "sequencingType must be 'WES' or 'WGS'"
 

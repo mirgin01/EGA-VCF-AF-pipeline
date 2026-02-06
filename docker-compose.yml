@@ -1,0 +1,18 @@
+services:
+  af_hail_pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: af_hail_pipeline:latest
+    container_name: af_hail_pipeline
+
+    working_dir: /app
+    
+    volumes:
+      - ./input:/data/input:ro
+      - ./output:/data/output
+      - ./work:/data/work
+      - ./config.yaml:/app/config.yaml:ro
+
+    
+    command: ["python", "vcf-af-pipeline.py"]

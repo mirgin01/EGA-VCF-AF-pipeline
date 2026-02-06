@@ -72,98 +72,100 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
     """
     logging.info("Re-calculating AFs by sex and ancestry if available")
 
+    has_sex = 'imputed_sex' in mt.col.dtype.keys()
+
     # PRE-STEP : Ensure haploid calls are correctly written 
 
-    mt = mt.annotate_entries(
-        GT = hl.case()
-        .when(
-            # Condition: Male sample AND non-PAR region AND diploid homozygous variant call
-            (mt.imputed_sex == "XY") & 
-            (~mt.locus.in_autosome_or_par()) & 
-            mt.GT.is_diploid() & 
-            (mt.GT.is_hom_ref() | mt.GT.is_hom_var()),
-            # Convert to haploid: take first allele only
-            hl.call(mt.GT[0])
+    if has_sex:
+        mt = mt.annotate_entries(
+            GT = hl.case()
+            .when(
+                # Condition: Male sample AND non-PAR region AND diploid homozygous variant call
+                (mt.imputed_sex == "XY") & 
+                (~mt.locus.in_autosome_or_par()) & 
+                mt.GT.is_diploid() & 
+                (mt.GT.is_hom_ref() | mt.GT.is_hom_var()),
+                # Convert to haploid: take first allele only
+                hl.call(mt.GT[0])
+            )
+            .default(mt.GT)  # Keep original GT for all other cases
         )
-        .default(mt.GT)  # Keep original GT for all other cases
-    )
 
 
     # STEP 1: Calculate comprehensive genotype statistics
-    mt = mt.annotate_rows(
-        gt_stats=hl.agg.call_stats(mt.GT, mt.alleles), # Calculate overall statistics for all variants
-        gt_stats_by_sex=hl.agg.group_by(mt.imputed_sex, hl.agg.call_stats(mt.GT, mt.alleles)), # Calculate sex-stratified statistics
-    )
+    row_annotations = {
+        'gt_stats': hl.agg.call_stats(mt.GT, mt.alleles)
+    }
     
-    # STEP 2: Conditionally calculate ancestry-stratified statistics
+    # STEP 2: Conditionally calculate sex-stratified statistics
+    if has_sex:
+        row_annotations['gt_stats_by_sex'] = hl.agg.group_by(mt.imputed_sex, hl.agg.call_stats(mt.GT, mt.alleles))
+    
+    # STEP 3: Conditionally calculate ancestry-stratified statistics
     # Only compute ancestry stats if the ancestry field exists in the dataset
     if 'ancestry' in mt.col:
-        mt = mt.annotate_rows(
-            gt_stats_by_ancestry=hl.agg.group_by(mt.ancestry, hl.agg.call_stats(mt.GT, mt.alleles)), # Group by ancestry and calculate stats within each ancestry group
-            # NESTED GROUPING: Group by both ancestry AND sex for hemizygote counting
-            # This creates a nested structure: ancestry -> sex -> stats
-            gt_stats_by_ancestry_sex=hl.agg.group_by(
+        row_annotations['gt_stats_by_ancestry'] = hl.agg.group_by(mt.ancestry, hl.agg.call_stats(mt.GT, mt.alleles))
+        # Only do nested grouping if BOTH exist
+        if has_sex:
+            row_annotations['gt_stats_by_ancestry_sex'] = hl.agg.group_by(
                 hl.struct(ancestry=mt.ancestry, sex=mt.imputed_sex),
                 hl.agg.call_stats(mt.GT, mt.alleles)
             )
-        )
 
-    # STEP 3: Extract overall population statistics
+    mt = mt.annotate_rows(**row_annotations)
+
+    # STEP 4: Extract overall population statistics
     # Index [1] refers to the alternate allele (index [0] would be reference allele)
     AF_total = mt.gt_stats.AF[1] # Alternate allele frequency
     AC_total = mt.gt_stats.AC[1] # Alternate allele count
     AN_total = mt.gt_stats.AN # Total allele number (2 * sample count for diploid)
     nhom_total = mt.gt_stats.homozygote_count[1] # Homozygous alternate count
 
-    # HEMIZYGOTE HANDLING FOR OVERALL POPULATION
-    nhemi_total = hl.if_else(
-        ~mt.locus.in_autosome_or_par(),
-        # For sex chromosomes, get the XY subset from overall population
-        hl.if_else(
-            hl.is_defined(mt.gt_stats_by_sex.get("XY")),
-            mt.gt_stats_by_sex["XY"].AC[1],  # All males = total hemizygotes
-            hl.int32(0)  # No males in dataset
-        ),
-        hl.int32(0)  # Autosomal variants: no hemizygotes
-    )
+    # HEMIZYGOTES (Total) - Default to 0 if no sex info
+    if has_sex:
+        nhemi_total = hl.if_else(~mt.locus.in_autosome_or_par(),
+            hl.or_else(mt.gt_stats_by_sex.get("XY").AC[1], 0), 0)
+    else:
+        nhemi_total = hl.int32(0)
 
     nhet_total = AC_total - 2*nhom_total - nhemi_total # heterozygous count
 
-    # STEP 4: Extract sex-stratified statistics with hemizygote handling
+    # STEP 5: Extract sex-stratified statistics with hemizygote handling
     AF_sex = {}
-    sexes_avail = list(results_sex_agg.keys())  # Get available sex categories from input
-    logging.warning("Samples where sex couldn't be inferred will be ignored")
-    
-    for sex in sexes_avail: # create stats by sex
+    if has_sex:
+        sexes_avail = list(results_sex_agg.keys())  # Get available sex categories from input
+        logging.warning("Samples where sex couldn't be inferred will be ignored")
         
-        if sex == "undefined":
-            continue  # Skip samples with unknown sex
-        
-        AF_sex[f"AF_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AF[1]
-        AF_sex[f"AC_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AC[1]
-        AF_sex[f"nhom_{sex}_recalc"] = mt.gt_stats_by_sex[sex].homozygote_count[1]
-        AF_sex[f"AN_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AN
+        for sex in sexes_avail: # create stats by sex
+            
+            if sex == "undefined":
+                continue  # Skip samples with unknown sex
+            
+            AF_sex[f"AF_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AF[1]
+            AF_sex[f"AC_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AC[1]
+            AF_sex[f"nhom_{sex}_recalc"] = mt.gt_stats_by_sex[sex].homozygote_count[1]
+            AF_sex[f"AN_{sex}_recalc"] = mt.gt_stats_by_sex[sex].AN
 
-        # HEMIZYGOTE HANDLING FOR SEX CHROMOSOMES
-        # Add hemizygote allele count if variant is on non-autosomal/non-PAR regions
-        # Only XY (male) individuals can be hemizygous for X chromosome variants
-        AF_sex[f"nhemi_{sex}_recalc"] = hl.if_else(
-            # Check if variant is on sex chromosome outside pseudoautosomal regions
-            ~mt.locus.in_autosome_or_par(),
-            # If on sex chromosome and this is XY group, use the allele count as hemizygote count
-            hl.if_else(
-                sex == "XY", 
-                mt.gt_stats_by_sex[sex].AC[1],  # Males: AC equals hemizygote count
-                hl.int32(0)  # Females: no hemizygotes possible
-            ),
-            hl.int32(0)  # Autosomal variants: no hemizygotes
-        )
+            # HEMIZYGOTE HANDLING FOR SEX CHROMOSOMES
+            # Add hemizygote allele count if variant is on non-autosomal/non-PAR regions
+            # Only XY (male) individuals can be hemizygous for X chromosome variants
+            AF_sex[f"nhemi_{sex}_recalc"] = hl.if_else(
+                # Check if variant is on sex chromosome outside pseudoautosomal regions
+                ~mt.locus.in_autosome_or_par(),
+                # If on sex chromosome and this is XY group, use the allele count as hemizygote count
+                hl.if_else(
+                    sex == "XY", 
+                    mt.gt_stats_by_sex[sex].AC[1],  # Males: AC equals hemizygote count
+                    hl.int32(0)  # Females: no hemizygotes possible
+                ),
+                hl.int32(0)  # Autosomal variants: no hemizygotes
+            )
 
-        AF_sex[f"nhet_{sex}_recalc"] = AF_sex[f"AC_{sex}_recalc"] - 2*(AF_sex[f"nhom_{sex}_recalc"]) - AF_sex[f"nhemi_{sex}_recalc"] # heterozygous count
+            AF_sex[f"nhet_{sex}_recalc"] = AF_sex[f"AC_{sex}_recalc"] - 2*(AF_sex[f"nhom_{sex}_recalc"]) - AF_sex[f"nhemi_{sex}_recalc"] # heterozygous count
 
 
 
-    # STEP 5: Extract ancestry-stratified statistics (if available)
+    # STEP 6: Extract ancestry-stratified statistics (if available)
     if config['ancestry'] and results_ancestry_agg != "":
         AF_ancestry = {}
         ancestry_avail = list(results_ancestry_agg.keys()) # gets the ancestries in the VCF
@@ -182,22 +184,15 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
             # For ancestry groups, we need to extract the XY subset within each ancestry
             # This requires a nested grouping: ancestry -> sex -> stats
             # Create the key for this ancestry + XY combination
-            ancestry_xy_key = hl.struct(ancestry=ancestry, sex="XY")
+            if has_sex:
+                anc_xy_key = hl.struct(ancestry=ancestry, sex="XY")
+                AF_ancestry[f"nhemi{ancestry}_recalc"] = hl.if_else(
+                    ~mt.locus.in_autosome_or_par(),
+                    hl.or_else(mt.gt_stats_by_ancestry_sex.get(anc_xy_key).AC[1], 0), 0)
+            else:
+                AF_ancestry[f"nhemi{ancestry}_recalc"] = hl.int32(0)
 
-            AF_ancestry[f"nhemi{ancestry}_recalc"] = hl.if_else(
-                ~mt.locus.in_autosome_or_par(),
-                # For sex chromosomes, get the XY subset of this specific ancestry
-                hl.if_else(
-                    # Check if this ancestry-XY combination exists in our nested data
-                    hl.is_defined(mt.gt_stats_by_ancestry_sex.get(ancestry_xy_key)),
-                    # Extract allele count from males of this ancestry = hemizygote count
-                    mt.gt_stats_by_ancestry_sex[ancestry_xy_key].AC[1],
-                    hl.int32(0)  # No XY samples for this ancestry
-                ),
-                hl.int32(0)  # Autosomal variants: no hemizygotes
-            )
-
-            AF_ancestry[f"nhet_{ancestry}_recalc"] = AF_ancestry[f"AC_{ancestry}_recalc"] - 2*(AF_ancestry[f"nhom_{ancestry}_recalc"]) - AF_ancestry[f"nhemi_{ancestry}_recalc"] # heterozygous count
+            AF_ancestry[f"nhet_{ancestry}_recalc"] = AF_ancestry[f"AC_{ancestry}_recalc"] - 2*AF_ancestry[f"nhom_{ancestry}_recalc"] - AF_ancestry[f"nhemi{ancestry}_recalc"]
     else:
         AF_ancestry={}
 

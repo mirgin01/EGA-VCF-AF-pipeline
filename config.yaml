@@ -1,67 +1,68 @@
 ## PATHS
-vcf_dir : "convert-fixed/" # all the VCFs in this folder must be from the same reference genome
-vcf_for_header : "GCAT_recalc_chrX_hemi.vcf.bgz"  # the final VCF will have parts of this header
+vcf_dir : "/data/input/" # all the VCFs in this folder must be from the same reference genome
+vcf_for_header : "/data/input/GCAT-millionsubset.vcf.bgz"  # the final VCF will have parts of this header
 ref_gen : "GRCh37" # reference genome from the VCFs
-mt_from_vcf : "GCAT_chrX" # path where the original matrix will be saved
 seq_type : "WGS" # sequencing typw
-mt_afterQC : "GCAT_chrX_afterQC" # path where the after QC matrix will be
+mt_from_vcf: "/data/work/GCAT.mt"
+mt_afterQC:  "/data/work/GCAT_afterQC.mt"
 
 ## LOGs
 verbosity : true # if true a csv with variants deleted per step will be create. This increases the execution time.
-plots: false # create box plot showing the distribution of each QC sample parameter
+plots: true # create box plot showing the distribution of each QC sample parameter
 
 ## MODULES TO RUN
-preprocessing : true # if true the module will be run
+preprocessing : false # if true the module will be run
+infer_sex : true
 delete_related: true
 ancestry : true
 af_annotation : true
 
 ## PREPROCESSING STEPS
-convert_vcfs : false # if true the module will be run
-split_multiallelic : true
-genotype_filtering : true
-variant_filtering : true
-sample_filtering : true
+convert_vcfs : true # if true the module will be run
+split_multiallelic : false
+genotype_filtering : false
+variant_filtering : false
+sample_filtering : false
 
 # Note: If you don't want to run certain filtering step add a hash sign before the thresholds value (e.g QD_threshold : #2.0 )
 
 ## VARIANT FILTERING THRESHOLDS
 variant_filters:
-  QD_threshold : 2.0 # threshold used during the QC
-  DP_threshold : 15 
+  QD_threshold : #2.0 # threshold used during the QC
+  DP_threshold : #15 
   QUAL_threshold : 40
-  MQ_threshold : 40
-  FS_threshold : 60
-  READPOSRANKSUM_threshold : -8.0
+  MQ_threshold : #40
+  FS_threshold : #60
+  READPOSRANKSUM_threshold : #-8.0
 
 ## GENOTYPE FILTERING THRESHOLDS 
 genotype_filters:
-  GQ_threshold : 20
-  AB_threshold : 0.2
+  GQ_threshold : #20
+  AB_threshold : #0.2
 
 ## SAMPLE FILTERING THRESHOLDS
 sample_filters:  
-  DP_STATS.MEAN_WGS_threshold : 15
-  DP_STATS.MEAN_WES_threshold : 10
+  DP_STATS.MEAN_WGS_threshold : #15
+  DP_STATS.MEAN_WES_threshold : #10
   CALL_RATE_threshold : 0.95
-  R_HET_HOM_VAR_WES_threshold : 10 
   R_HET_HOM_VAR_WGS_threshold : 3.3
+  R_HET_HOM_VAR_WES_threshold : #10 
   N_SINGLETON_WGS_threshold : 100000
-  N_SINGLETON_WES_threshold : 5000 
-  CHARR_threshold : 0.05
+  N_SINGLETON_WES_threshold : #5000 
+  CHARR_threshold : #0.05
   R_TI_TV_WES_threshold : #[3.0 , 3.3]
   R_TI_TV_WGS_threshold : #[2.0 , 2.1]
-gnomad_sites_GRCh37 : "" # reference for GRCh37 
-gnomad_sites_GRCh38 : "" # reference for GRCh38
+gnomad_sites_GRCh37 : "" # reference for GRCh37. If docker use: /data/input/gnomad.genomes.r2.1.1.sites.ht
+gnomad_sites_GRCh38 : "" # reference for GRCh38. If docker use: /data/input/gnomad.genomes.v4.1.sites.ht
 
 ## RELATEDNESS
-table_with_subset : "./variants_for_pca.ht"
+table_with_subset : "variants_for_pca.ht"
 
 ## ANCESTRY
-ancestrySNPs : "/home/mireia/GitHub/Hail/workflow/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs
+ancestrySNPs : "/app/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs. Leave as "/app/GrafAnc_SNPs/" is using Docker. 
 
 ## AF RECALC
-final_vcf_AF : "/home/mireia/Bioinfo/Hail_folder/GCAT_AF_hemi_hap_rewritten.vcf.bgz" # path for VCF annotated with AFs
+final_vcf_AF : "/data/output/synthethic_afterHail.vcf.gz" # path for VCF annotated with AFs
 
 ## EXPORT FINAL VCF
 summary_VCF : false # if true the output VCF wont contain ANY information about the samples and their genotypes
@@ -76,7 +77,7 @@ spark_executor_instances: "4" # Use multiple executors
 spark_executor_cores: "4" # Assign cores per executor
 spark_rpc_askTimeout: "300s" # Increase timeout for slow operations
 spark_sql_shuffle_partitions: "200" # Reduce shuffle partitions for large data
-spark_local_dir: "./tmp" # Specify a temp directory for disk spill
 spark_network_timeout: "800s" # Avoid network timeouts
-tmp_dir: "./tmp"
-local_tmpdir: "./tmp"
+spark_local_dir: "/data/work/tmp"
+tmp_dir: "/data/work/tmp"
+local_tmpdir: "/data/work/tmp"
