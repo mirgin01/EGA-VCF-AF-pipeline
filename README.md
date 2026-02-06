@@ -99,15 +99,16 @@ To download the reference data:
 ```
 gsutil cp -r gs://gcp-public-data--gnomad/release/4.1/ht/genomes/gnomad.genomes.v4.1.sites.ht/ .
 ```
-## Option 2: Docker
-
-See ADD LINK to use this pipeline inside a Docker container. 
 
 ### 4. Clone the repository 
 
 Once all the requirements have been installed, clone this repository to your local computer or cluster. When cloning, you will download all the code for the pipeline, as well as the binaries for GrafAnc — the tool used to infer the ancestry of the samples.
 
-## HOW TO RUN THE PIPELINE
+## Option 2: Docker
+
+See [README-for-docker.md](https://github.com/EGA-archive/AF_hail_pipeline/blob/main/README--for-docker.md) to use this pipeline inside a Docker container. 
+
+## HOW TO RUN THE PIPELINE LOCALLY
 
 All parameters and module executions are controlled via `config.yaml`. Example:
 
