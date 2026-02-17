@@ -45,8 +45,9 @@ Typical layout:
 ## Quickstart
 
 1) **Create folders**
+
 ```bash
-mkdir -p input output work
+git clone git@github.com:EGA-archive/AF_hail_pipeline.git
 ```
 
 2) **Place your inputs**
