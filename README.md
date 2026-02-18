@@ -108,7 +108,7 @@ Once all the requirements have been installed, clone this repository to your loc
 
 See [README-for-docker.md](https://github.com/EGA-archive/AF_hail_pipeline/blob/main/README--for-docker.md) to use this pipeline inside a Docker container. 
 
-## HOW TO RUN THE PIPELINE LOCALLY
+## HOW TO RUN THE PIPELINE
 
 All parameters and module executions are controlled via `config.yaml`. Example:
 
