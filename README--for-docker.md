@@ -102,12 +102,6 @@ docker compose build
 docker compose up
 ```
 
-Detached:
-```bash
-docker compose up -d
-docker compose logs -f
-```
-
 Stop / cleanup:
 ```bash
 docker compose down
@@ -124,11 +118,9 @@ The compose file mounts:
 To ensure outputs appear on your host machine, configure `config.yaml` to use `/data/...` paths, e.g.:
 
 ```yaml
+vcf_dir : "/data/input/" 
 mt_from_vcf: "/data/work/synthetic.mt"
 mt_afterQC: "/data/work/synthetic_afterQC.mt"
-spark_local_dir: "/data/work/tmp"
-tmp_dir: "/data/work/tmp"
-local_tmpdir: "/data/work/tmp"
 final_vcf_AF: "/data/output/final.vcf.bgz"
 ```
 

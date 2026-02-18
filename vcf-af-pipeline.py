@@ -31,7 +31,7 @@ def main():
     print_config(config)
 
     logging.info(f"=========================")
-    logging.info(f"+++ RUNNING EGA STANDARD VCF WORKFLOW v1 +++")
+    logging.info(f"+++ RUNNING EGA STANDARD VCF WORKFLOW v1.1 +++")
     csv_creator() 
     summary = []
     basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))
