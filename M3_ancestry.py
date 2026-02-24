@@ -17,7 +17,7 @@ def subset_matrix(mt):
     mt = mt.key_rows_by('locus', 'alleles') # key matrix columns for quick search
 
     # load ancestry SNPs depending on the ref_gen
-    ht_variants = hl.import_table(f"{config['ancestrySNPs']}ancestry_SNPs_GrafAnc_{config['ref_gen']}",
+    ht_variants = hl.import_table(f"GrafAnc_SNPs/ancestry_SNPs_GrafAnc_{config['ref_gen']}",
                                   delimiter='\t', impute=True, skip_blank_lines = True)
 
     ht_variants = ht_variants.key_by(**hl.parse_variant(ht_variants.ancestrySNPs)) #Convert variants in string format to separate locus and allele hail fields
@@ -100,11 +100,17 @@ def annotate_ancestry(ancestry_results, mt):
     :params: ancestry results per sample from GrafAnc and original mt (all the SNPs, ancestry informative and non-informative)
     :return: matrix with ancestry information
     """
-    ancestry_table = hl.import_table(ancestry_results, delimiter="\t", impute=True)
-    ancestry_table = ancestry_table.select('Sample', 'AncGroupNAME')
-    ancestry_table = ancestry_table.key_by('Sample')
-    mt = mt.annotate_cols(ancestry=ancestry_table[mt.s].AncGroupNAME)
-
+    if config['infer_ancestry']:
+        ancestry_table = hl.import_table(ancestry_results, delimiter="\t", impute=True)
+        ancestry_table = ancestry_table.select('Sample', 'AncGroupNAME')
+        ancestry_table = ancestry_table.key_by('Sample')
+        mt = mt.annotate_cols(ancestry=ancestry_table[mt.s].AncGroupNAME)
+    if config['submit_ancestry']:
+        ancestry_table = hl.import_table(ancestry_results, delimiter=",", impute=True)
+        ancestry_table.describe()
+        ancestry_table = ancestry_table.select('SampleID', 'Population')
+        ancestry_table = ancestry_table.key_by('SampleID')
+        mt = mt.annotate_cols(ancestry=ancestry_table[mt.s].Population)
 
     return mt
 

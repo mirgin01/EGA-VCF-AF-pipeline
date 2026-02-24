@@ -166,7 +166,7 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
 
 
     # STEP 6: Extract ancestry-stratified statistics (if available)
-    if config['ancestry'] and results_ancestry_agg != "":
+    if results_ancestry_agg != "":
         AF_ancestry = {}
         ancestry_avail = list(results_ancestry_agg.keys()) # gets the ancestries in the VCF
         
@@ -196,11 +196,52 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
     else:
         AF_ancestry={}
 
-    return mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry
+        # STEP 7: Extract ancestry-by-sex stratified statistics (if both are available)
+    # Produces fields like AF_EUR_XY_recalc, AF_EUR_XX_recalc, etc.
+    AF_ancestry_sex = {}
+
+    if results_ancestry_agg != "" and has_sex:
+        
+        for ancestry in ancestry_avail:
+
+            if ancestry == "Multi-ancestry":
+                continue
+
+            for sex in sexes_avail:
+
+                if sex == "undefined":
+                    continue
+
+                key = hl.struct(ancestry=ancestry, sex=sex)
+
+                AF_ancestry_sex[f"AF_{ancestry}_{sex}_recalc"]   = hl.or_else(mt.gt_stats_by_ancestry_sex.get(key).AF[1],   hl.float64(0))
+                AF_ancestry_sex[f"AC_{ancestry}_{sex}_recalc"]   = hl.or_else(mt.gt_stats_by_ancestry_sex.get(key).AC[1],   hl.int32(0))
+                AF_ancestry_sex[f"AN_{ancestry}_{sex}_recalc"]   = hl.or_else(mt.gt_stats_by_ancestry_sex.get(key).AN,      hl.int32(0))
+                AF_ancestry_sex[f"nhom_{ancestry}_{sex}_recalc"] = hl.or_else(mt.gt_stats_by_ancestry_sex.get(key).homozygote_count[1], hl.int32(0))
+
+                # HEMIZYGOTE HANDLING FOR ANCESTRY x SEX
+                # Only XY individuals outside autosomal/PAR regions can be hemizygous
+                AF_ancestry_sex[f"nhemi_{ancestry}_{sex}_recalc"] = hl.if_else(
+                    ~mt.locus.in_autosome_or_par(),
+                    hl.if_else(
+                        sex == "XY",
+                        hl.or_else(mt.gt_stats_by_ancestry_sex.get(key).AC[1], hl.int32(0)),
+                        hl.int32(0)  # XX individuals: no hemizygotes
+                    ),
+                    hl.int32(0)  # Autosomal variants: no hemizygotes
+                )
+
+                AF_ancestry_sex[f"nhet_{ancestry}_{sex}_recalc"] = (
+                    AF_ancestry_sex[f"AC_{ancestry}_{sex}_recalc"]
+                    - 2 * AF_ancestry_sex[f"nhom_{ancestry}_{sex}_recalc"]
+                    - AF_ancestry_sex[f"nhemi_{ancestry}_{sex}_recalc"]
+                )
+
+    return mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry, AF_ancestry_sex
 
 
 
-def annotate_new_vcf(mt, AF_total, AC_total, AN_total, homozygote_count_total, heterozygous_count, hemizygotes_total, AF_sex, AF_ancestry):
+def annotate_new_vcf(mt, AF_total, AC_total, AN_total, homozygote_count_total, heterozygous_count, hemizygotes_total, AF_sex, AF_ancestry, AF_ancestry_sex):
     """
     Annotates mt with AF fields by sex and ancestry
     :params: mt, stast about total AF and AF fields by sex and ancestry
@@ -215,7 +256,8 @@ def annotate_new_vcf(mt, AF_total, AC_total, AN_total, homozygote_count_total, h
             nhemi_total_recalc=hemizygotes_total,
             AN_total_recalc= AN_total,
             **AF_sex,
-            **AF_ancestry
+            **AF_ancestry, 
+            **AF_ancestry_sex
         )
     )
     return mt_af
@@ -227,7 +269,15 @@ def export_new_vcf(mt_af):
     :params: mt with AF fields by sex and ancestry
     :return: VCF with AF fields by sex and ancestry
     """
-    header_metadata = hl.get_vcf_metadata(config['vcf_for_header'])  # get original header
+    # Get all VCF file paths in the directory
+    vcfs = sorted([
+        os.path.join(config['vcf_dir'], f)
+        for f in os.listdir(config['vcf_dir'])
+        if f.endswith('.vcf') or f.endswith('.vcf.bgz') or f.endswith('.vcf.gz')
+    ])
+    
+    header_metadata = hl.get_vcf_metadata(vcfs[0])  # get original header
+    
     if config['summary_VCF'] == True:
         logging.info("Exporting final summary VCF with recalculated AF fields and no sample information")
         # Remove all sample columns

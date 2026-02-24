@@ -1,6 +1,6 @@
 # VCF Processing Pipeline
 
-This pipeline generates a VCF annotated with allele frequencies stratified by ancestry and sex. It is designed to facilitate downstream analyses that require population-aware frequency data. The pipeline consists of the following main modules:
+This pipeline generates a VCF annotated with allele frequencies stratified by ancestry, sex and ancestry by sex. It is designed to facilitate downstream analyses that require population-aware frequency data. The pipeline consists of the following main modules:
 
 - Variant, Genotype, and Sample Quality Control
 
@@ -10,31 +10,12 @@ This pipeline generates a VCF annotated with allele frequencies stratified by an
 
 - Allele Frequency Recalculation and Annotation by Ancestry and Sex
 
-The final output will be a VCF file with all population allele frequencies (`AF`) and supporting metrics annotated:
-
-```
-AF_total_recalc
-AC_total_recalc
-nhomalt_total_recalc
-AN_total_recalc
-AF_male_recalc
-AC_male_recalc
-nhomalt_male_recalc
-AN_male_recalc
-AF_female_recalc
-AC_female_recalc
-nhomalt_female_recalc
-AN_female_recalc
-AF_pop_n_recalc
-AC_pop_n_recalc
-nhomalt_pop_n_recalc
-AN_pop_n_recalc
-```
+The final output will be a VCF file with all population allele frequencies (`AF`) and supporting metrics annotated.
 
 **Bear in mind that the original AF values (if present in the input VCF) are NOT deleted, the output VCF will have the original AFs and the recalc ones.**
 
 **Note:**  
-If sex and ancestry cannot be inferred from genomic data, sex-based and ancestry-based grouping will be skipped.
+If sex and ancestry cannot be inferred from genomic data, or ancestry information is not submitted, sex-based and ancestry-based grouping will be skipped.
 
 ## Requirements and Installation
 
@@ -114,83 +95,86 @@ All parameters and module executions are controlled via `config.yaml`. Example:
 
 ```yaml
 ## PATHS
-
-vcf_dir : " " # all the VCFs in this folder will be converted to a Hail matrix. They must be from the same reference genome.
-vcf_for_header : ""  # the final VCF will have parts of this header
-ref_gen : " " # reference genome from the VCFs (OPTIONS: GRCh37 / GRCh38)
-mt_from_vcf : " " # path where the original matrix will be saved
-seq_type : " " # sequencing type (OPTIONS: WGS / WES)
-mt_afterQC : " " # path where the after QC matrix will be
-
-## LOGs
-verbosity : true # if true a csv with variants deleted per step will be create. This increases the execution time.
-plots: false # create box plot showing the distribution of each QC sample parameter
+vcf_dir : " "           # All VCFs in this folder must be from the same reference genome
+vcf_for_header : ""     # The final VCF will have parts of this header
+ref_gen : " "           # Reference genome of the VCFs (OPTIONS: GRCh37 / GRCh38)
+seq_type : " "          # Sequencing type (OPTIONS: WGS / WES)
+mt_from_vcf : " "       # Path where the MatrixTable produced by preprocessing will be saved
+mt_afterQC : " "        # Path where the post-QC MatrixTable will be saved
+final_vcf_AF : " "      # Path for the output VCF annotated with recalculated AFs
+summary_VCF : false     # If true, the output VCF will contain no sample or genotype information
 
 ## MODULES TO RUN
-preprocessing : true # if true the module will be run
-delete_related: true
-ancestry : true
-af_annotation : true
+preprocessing : true   # Run preprocessing module if true
+infer_sex : true       # Run sex inference module if true
+delete_related: true   # Remove related samples if true
+
+# Ancestry analysis options:
+# - infer_ancestry and submit_ancestry are mutually exclusive.
+# - If infer_ancestry = true, submit_ancestry MUST be false.
+# - Both can be false to skip ancestry processing entirely.
+infer_ancestry : true
+submit_ancestry: false
+ancestry_information : ""  # Path to CSV with ancestry labels. Required header: SampleID\tPopulation
+
+af_annotation : true  # Run allele frequency annotation if true
 
 ## PREPROCESSING STEPS
-convert_vcfs : true # if true the module will be run
-split_multiallelic : true
-genotype_filtering : true
-variant_filtering : true
-sample_filtering : true
+convert_vcfs : true        # Convert input VCFs to a Hail MatrixTable
+split_multiallelic : true  # Split multiallelic sites into biallelic rows
+genotype_filtering : true  # Apply genotype-level filters
+variant_filtering : true   # Apply variant-level filters
+sample_filtering : true    # Apply sample-level QC filters
+
+# Note: to disable a specific filter, comment out its threshold value
+# e.g.  QD_threshold : #2.0
 
 ## VARIANT FILTERING THRESHOLDS
 variant_filters:
-  QD_threshold : 2.0 # threshold used during QC
-  DP_threshold : 15 
+  QD_threshold : 2.0
+  DP_threshold : 15
   QUAL_threshold : 40
   MQ_threshold : 40
   FS_threshold : 60
   READPOSRANKSUM_threshold : -8.0
 
-## GENOTYPE FILTERING THRESHOLDS 
+## GENOTYPE FILTERING THRESHOLDS
 genotype_filters:
   GQ_threshold : 20
   AB_threshold : 0.2
 
 ## SAMPLE FILTERING THRESHOLDS
-sample_filters:  
+sample_filters:
   DP_STATS.MEAN_WGS_threshold : 15
   DP_STATS.MEAN_WES_threshold : 10
   CALL_RATE_threshold : 0.95
-  R_HET_HOM_VAR_WES_threshold : 10 
   R_HET_HOM_VAR_WGS_threshold : 3.3
+  R_HET_HOM_VAR_WES_threshold : #0
   N_SINGLETON_WGS_threshold : 100000
-  N_SINGLETON_WES_threshold : 5000 
+  N_SINGLETON_WES_threshold : 5000
   CHARR_threshold : 0.05
-  R_TI_TV_WES_threshold : [3.0 , 3.3]
-  R_TI_TV_WGS_threshold : [2.0 , 2.1]
-gnomad_sites_GRCh37 : "" # reference for GRCh37 
-gnomad_sites_GRCh38 : "" # reference for GRCh38
+  R_TI_TV_WES_threshold : #[3.0 , 3.3]
+  R_TI_TV_WGS_threshold : #[2.0 , 2.1]
+gnomad_sites_GRCh37 : ""  # Path to gnomAD sites Hail Table for GRCh37
+gnomad_sites_GRCh38 : ""  # Path to gnomAD sites Hail Table for GRCh38
 
-## ANCESTRY
-ancestrySNPs : "path/to/GrafAnc_SNPs/" # update with your local path of GrafAnc_SNPs (Downloaded when cloning this repo)
+## LOGs
+verbosity : true  # If true, a CSV with variants removed per step will be created (increases execution time)
+plots: false      # If true, box plots showing the distribution of each QC sample parameter will be createdpo)
 
-## AF RECALC
-final_vcf_AF : " " # path for VCF annotated with AFs
-summary_VCF : false # if true the output VCF wont contain ANY information about the samples and their genotypes
-
-## SPARK CONFIGURATION 
-
-# To work with big datasets allocating the available memory into spark avoids crashes. 
-
-spark_diver_memory: "50g" # Allocate sufficient memory for the driver
-spark_executor_memory : "20g" # Allocate memory for executors
-spark_executor_memory: 4 # Use multiple executors
-spark_executor_cores: 4 # Assign cores per executor
-spark_rpc_askTimeout': "300s" # Increase timeout for slow operations
-spark_sql_shuffle_partitions: 200 # Reduce shuffle partitions for large data
-spark_memory_fraction: 0.8 # Use most of the JVM heap for Spark execution
-spark_local_dir: "./tmp" # Specify a temp directory for disk spill
-spark_network_timeout: 800s # Avoid network timeouts
+## SPARK CONFIGURATION
+# Allocating available memory to Spark helps avoid crashes when working with large datasets.
+cluster : False  # If true, the Spark configuration below will be applied
+spark_driver_memory: "50g"
+spark_executor_memory : "20g"
+spark_executor_instances: "4"
+spark_executor_cores: "4"
+spark_rpc_askTimeout: "300s"
+spark_sql_shuffle_partitions: "200"
+spark_network_timeout: "800s"
+spark_local_dir: "./tmp"
 tmp_dir: "./tmp"
 local_tmpdir: "./tmp"
-
 ```
 
 ---

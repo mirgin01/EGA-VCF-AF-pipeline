@@ -5,20 +5,23 @@ from M4_af_annotation import stats_by_sex, stats_by_ancestry, af_by_sex_ancestry
 from utils import *
 import hail as hl 
 
-hl.init(
-    spark_conf={
-        'spark.driver.memory': config['spark_driver_memory'],  # Allocate sufficient memory for the driver
-        'spark.executor.memory': config['spark_executor_memory'],  # Allocate memory for executors
-        'spark.executor.instances': config['spark_executor_instances'],  # Use multiple executors
-        'spark.executor.cores': config['spark_executor_cores'],  # Assign cores per executor
-        'spark.rpc.askTimeout': config['spark_rpc_askTimeout'],  # Increase timeout for slow operations
-        'spark.sql.shuffle.partitions': config['spark_sql_shuffle_partitions'],  # Reduce shuffle partitions for large data
-        'spark.local.dir': config["spark_local_dir"],  # Specify a temp directory for disk spill
-        'spark.network.timeout': config["spark_network_timeout"],  # Avoid network timeouts
-    },
-    tmp_dir = config["tmp_dir"],
-    local_tmpdir = config["local_tmpdir"]
-)
+if config['cluster']:
+    hl.init(
+        spark_conf={
+            'spark.driver.memory': config['spark_driver_memory'],  # Allocate sufficient memory for the driver
+            'spark.executor.memory': config['spark_executor_memory'],  # Allocate memory for executors
+            'spark.executor.instances': config['spark_executor_instances'],  # Use multiple executors
+            'spark.executor.cores': config['spark_executor_cores'],  # Assign cores per executor
+            'spark.rpc.askTimeout': config['spark_rpc_askTimeout'],  # Increase timeout for slow operations
+            'spark.sql.shuffle.partitions': config['spark_sql_shuffle_partitions'],  # Reduce shuffle partitions for large data
+            'spark.local.dir': config["spark_local_dir"],  # Specify a temp directory for disk spill
+            'spark.network.timeout': config["spark_network_timeout"],  # Avoid network timeouts
+        },
+        tmp_dir = config["tmp_dir"],
+        local_tmpdir = config["local_tmpdir"]
+    )
+else:
+    hl.init()
 
 
 
@@ -106,7 +109,7 @@ def main():
     
     ## ANCESTRY
 
-    if config['ancestry']:
+    if config['infer_ancestry']:
         ancestry_vcf, ancestry_snps_count = subset_matrix(mt)
         if ancestry_snps_count == 0: 
             logging.error("There are not enough ancestry SNPs to run GrafAnc - aborting ancestry annotation")
@@ -120,6 +123,11 @@ def main():
             
             if ancestry_results is not None: # if ancestry was inferred annotate the results 
                 mt = annotate_ancestry(ancestry_results, mt)
+
+    if config['submit_ancestry']:
+        logging.info(f"Ancestry/population read from: {config['ancestry_information']}")
+        mt = annotate_ancestry(config['ancestry_information'], mt) 
+
         
 
     ## AF RECALC
@@ -135,7 +143,7 @@ def main():
             results_sex_agg = {} 
                 
         # Create ancestry groups
-        if config['ancestry']:
+        if config['infer_ancestry'] or config['submit_ancestry']:
             try:
                 mt, results_ancestry_agg = stats_by_ancestry(mt)
             except: 
@@ -144,11 +152,12 @@ def main():
         else:
             results_ancestry_agg = ""
 
-        mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry = af_by_sex_ancestry(mt,
+        mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry, AF_ancestry_sex = af_by_sex_ancestry(mt,
                                                                                              results_sex_agg,
                                                                                              results_ancestry_agg)
 
-        mt = annotate_new_vcf(mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry)
+        mt = annotate_new_vcf(mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry, AF_ancestry_sex)
+        
         export_new_vcf(mt)
 
 

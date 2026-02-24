@@ -33,7 +33,7 @@ def convert_and_merge_vcfs(vcf_dir, mt_from_vcf, reference_genome):
     else:
         # Load the first VCF as the initial MatrixTable
         logging.info(f"Converting: {vcfs}")
-        mt = hl.import_vcf(f"{config['vcf_dir']}*.vcf*", reference_genome=reference_genome, min_partitions=4)
+        mt = hl.import_vcf(f"{config['vcf_dir']}/*.vcf*", reference_genome=reference_genome, min_partitions=4)
         
     mt.write(mt_from_vcf, overwrite=True)
     
