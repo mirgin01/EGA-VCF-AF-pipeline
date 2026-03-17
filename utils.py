@@ -6,11 +6,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 import os 
+import pandas as pd 
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from scipy import stats
+import matplotlib.patches as mpatches
 
 # Generate timestamp once when module is imported
 _timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 _name_only = None 
-
 
 def get_name():
     """
@@ -37,7 +42,6 @@ def csv_creator():
         writer = csv.writer(file)
         writer.writerow(["Summary of Outputs created by EGA standard VCF workflow v1"])
         writer.writerow([])  # Empty line for readability
-
 
 def csv_writer(new_row):
     """
@@ -78,7 +82,6 @@ def load_logging():
 
     logging.info(f"LOG SAVED IN: {name_only}.log")
     
-
 def create_sample_plot(mt): 
     """
     Creates plots of the sample quality control metrics, grouped by sex and with the proper thresholds. 
@@ -157,10 +160,392 @@ def create_sample_plot(mt):
         except KeyError:
             print(f"Skipping metric due to KeyError: {metric}")
             continue
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+QC_METRICS = [
+    'sample_qc.dp_stats.mean',
+    'sample_qc.call_rate',
+    'sample_qc.r_het_hom_var',
+    'sample_qc.n_singleton',
+    'sample_qc.r_ti_tv',
+]
+
+METRIC_LABELS = {
+    'sample_qc.dp_stats.mean': 'Mean DP',
+    'sample_qc.call_rate':     'Call Rate',
+    'sample_qc.r_het_hom_var': 'Het/Hom',
+    'sample_qc.n_singleton':   'N Singleton',
+    'sample_qc.r_ti_tv':       'Ti/Tv',
+    'charr':                   'CHARR',
+}
+
+
+def _prepare_df(mt, include_charr: bool = True):
+    """Extract QC metrics + optional metadata from a Hail MatrixTable."""
+    available = list(mt.col.dtype.keys())
+    has_charr = 'charr' in available and include_charr
+
+    select_fields = ['sample_qc']
+    if has_charr: select_fields.append('charr')
+
+    df = mt.cols().select(*select_fields).to_pandas()
+
+    metrics = list(QC_METRICS)
+    if has_charr:
+        metrics.append('charr')
+
+    # keep only metrics that are actually present
+    metrics = [m for m in metrics if m in df.columns]
+    print(metrics)
+
+    meta_cols = ['s'] if 's' in df.columns else []
+
+    return df, metrics, meta_cols
+
+def _clean_metric_matrix(df: pd.DataFrame, metrics: list) -> tuple:
+    """Return (X_clean, valid_idx) with no NaNs, cast to float64."""
+    sub = df[metrics].copy().apply(pd.to_numeric, errors='coerce')
+    valid_mask = sub.notna().all(axis=1)
+    return sub[valid_mask].values.astype(float), sub[valid_mask].index
+
+
+def plot_pca_qc(mt, z_thresh: float = 3.0, name_prefix: str = 'sample_qc',
+                collected: dict = None, sample_ids: list = None):
+    """
+    PCA across all QC metrics to detect global outliers.
+
+    Parameters
+    ----------
+    mt          : Hail MatrixTable (after sample_qc, optional impute_sex / charr)
+    z_thresh    : PC-score Z-score threshold to flag outliers (default 3.0)
+    name_prefix : prefix for saved .png files
+    """
+    df, metrics, meta_cols = _prepare_df(mt)
+    X, valid_idx = _clean_metric_matrix(df, metrics)
+
+    # standardise + PCA 
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    n_components = min(len(metrics), X_scaled.shape[0], 5)
+    pca = PCA(n_components=n_components)
+    pcs = pca.fit_transform(X_scaled)
+
+    pc_df = pd.DataFrame(
+        pcs,
+        columns=[f'PC{i+1}' for i in range(n_components)],
+        index=valid_idx
+    )
+
+    # flag outliers by Z-score on PC1 & PC2
+    for pc in ['PC1', 'PC2']:
+        pc_df[f'z_{pc}'] = np.abs(stats.zscore(pc_df[pc]))
+    pc_df['outlier'] = (pc_df['z_PC1'] > z_thresh) | (pc_df['z_PC2'] > z_thresh)
         
-                
+    # start - print 5 samples furthest from the PCA centre with their values for the QC metrics, and cohort-wide stats for those metrics
+
+    if collected is not None and sample_ids is not None:
+            # Euclidean distance from origin across PC1, PC2, PC3
+            pc_df['distance'] = np.sqrt(
+                pc_df['PC1']**2 + pc_df['PC2']**2 + pc_df['PC3']**2
+            )
+            top5_idx = pc_df['distance'].nlargest(5).index
+            top5_names = [sample_ids[i] if i < len(sample_ids) else 'NA' for i in top5_idx]
+            logging.info(f"Top 5 sample IDs: {', '.join(top5_names)}")
+
+            # cohort-wide stats for reference
+            logging.info("=== Top 5 samples furthest from PCA centre ===")
+            logging.info(f"{'Metric':<20} {'Cohort mean':>12} {'Cohort min':>12} {'Cohort max':>12} {'Sample values (top5)':>30}")
+            logging.info("-" * 90)
+
+            metric_labels = {
+                'call_rate':     'Call Rate',
+                'r_ti_tv':       'Ti/Tv ratio',
+                'r_het_hom_var': 'Het/Hom ratio',
+                'n_singleton':   'N Singletons',
+                'dp_stats_mean': 'Mean DP',
+                'charr':         'CHARR',
+            }
+
+            for key, label in metric_labels.items():
+                vals = collected.get(key)
+                if vals is None:
+                    continue
+                valid = vals[~np.isnan(vals)]
+                if len(valid) == 0:
+                    continue
+
+                cohort_mean = float(np.mean(valid))
+                cohort_min  = float(np.min(valid))
+                cohort_max  = float(np.max(valid))
+
+                # get values for the top 5 samples by their index in sample_ids
+                top5_vals = []
+                for idx in top5_idx:
+                    # idx is a pandas integer index into pc_df
+                    # we need to map it back to position in sample_ids
+                    if idx < len(sample_ids):
+                        pos = idx
+                        top5_vals.append(f"{vals[pos]:.4f}" if not np.isnan(vals[pos]) else "NA")
+                    else:
+                        top5_vals.append("NA")
+
+                logging.info(
+                    f"{label:<20} {cohort_mean:>12.4f} {cohort_min:>12.4f} "
+                    f"{cohort_max:>12.4f}   {', '.join(top5_vals)}"
+                )
+
+            logging.info("=" * 90)
+    # fin - print 5 samples furthest from the PCA centre with their values for the QC metrics, and cohort-wide stats for those metrics
+    
+    # attach sample IDs
+    if 's' in df.columns:
+        pc_df['sample_id'] = df.loc[valid_idx, 's'].values
+
+    n_out = pc_df['outlier'].sum()
+    print(f"[PCA] {n_out} / {len(pc_df)} samples flagged as outliers "
+          f"(|Z| > {z_thresh} on PC1 or PC2)")
+
+    # figure 1 : PC1 vs PC2 
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle('PCA on QC Metrics — Global Outlier Detection', fontsize=14, fontweight='bold')
+
+    ax = axes[0]
+    ax.scatter(pc_df['PC1'], pc_df['PC2'],
+               c=pc_df['outlier'].map({True: 'red', False: '#4C9BE8'}),
+               alpha=0.7, edgecolors='none', s=40)
+    handles = [
+        mpatches.Patch(color='#4C9BE8', label='Pass'),
+        mpatches.Patch(color='red',     label='Outlier'),
+    ]
+    ax.legend(handles=handles, fontsize=8)
+
+    ax.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]*100:.1f}% var)', fontsize=10)
+    ax.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]*100:.1f}% var)', fontsize=10)
+    ax.set_title('PC1 vs PC2', fontsize=11)
+    ax.axhline(0, color='grey', linewidth=0.5, linestyle='--')
+    ax.axvline(0, color='grey', linewidth=0.5, linestyle='--')
+
+    # label outlier sample IDs if available
+    if 'sample_id' in pc_df.columns:
+        for _, row in pc_df[pc_df['outlier']].iterrows():
+            ax.annotate(str(row['sample_id']),
+                        xy=(row['PC1'], row['PC2']),
+                        fontsize=6, color='darkred',
+                        xytext=(4, 4), textcoords='offset points')
+
+    # right panel : scree + cumulative variance
+    ax2 = axes[1]
+    var_exp  = pca.explained_variance_ratio_ * 100
+    cum_var  = np.cumsum(var_exp)
+    pc_names = [f'PC{i+1}' for i in range(n_components)]
+
+    bars = ax2.bar(pc_names, var_exp, color='#4C9BE8', alpha=0.8, label='Individual')
+    ax2b = ax2.twinx()
+    ax2b.plot(pc_names, cum_var, 'o--', color='#E87B4C', linewidth=2, label='Cumulative')
+    ax2b.set_ylabel('Cumulative Variance (%)', color='#E87B4C', fontsize=10)
+    ax2b.tick_params(axis='y', labelcolor='#E87B4C')
+    ax2b.set_ylim(0, 110)
+
+    ax2.set_xlabel('Principal Component', fontsize=10)
+    ax2.set_ylabel('Explained Variance (%)', fontsize=10)
+    ax2.set_title('Scree Plot', fontsize=11)
+
+    plt.tight_layout()
+    out_path = f'{name_prefix}_pca_overview.png'
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.clf()
+    print(f"  → saved {out_path}")
+
+    # figure 2 : loadings heatmap 
+    loadings = pd.DataFrame(
+        pca.components_[:, :].T,
+        index=[METRIC_LABELS.get(m, m) for m in metrics],
+        columns=pc_names
+    )
+
+    fig2, ax3 = plt.subplots(figsize=(max(6, n_components * 1.2), len(metrics) * 0.7 + 1))
+    sns.heatmap(loadings, annot=True, fmt='.2f', cmap='RdBu_r', center=0,
+                linewidths=0.5, ax=ax3, vmin=-1, vmax=1,
+                cbar_kws={'label': 'Loading'})
+    ax3.set_title('PCA Loadings — contribution of each metric to each PC',
+                  fontsize=11, fontweight='bold')
+    plt.tight_layout()
+    lpath = f'{name_prefix}_pca_loadings.png'
+    plt.savefig(lpath, dpi=150, bbox_inches='tight')
+    plt.clf()
+    print(f"  → saved {lpath}")
+
+    return pc_df   # caller can inspect / further filter
 
 
+def plot_zscore_heatmap(mt, z_thresh: float = 3.0,
+                        max_samples_display: int = 200,
+                        name_prefix: str = 'sample_qc'):
+    """
+    Per-sample Z-score heatmap across all QC metrics.
+
+    Parameters
+    ----------
+    mt                  : Hail MatrixTable
+    z_thresh            : |Z| threshold to flag a metric as an outlier
+    max_samples_display : cap for legibility — only the worst samples are shown
+                          when the cohort is large
+    name_prefix         : prefix for saved .png files
+    """
+    df, metrics, meta_cols = _prepare_df(mt)
+    X, valid_idx = _clean_metric_matrix(df, metrics)
+
+    z_matrix = pd.DataFrame(
+        stats.zscore(X, axis=0),
+        index=valid_idx,
+        columns=[METRIC_LABELS.get(m, m) for m in metrics]
+    )
+
+    # flag samples: number of metrics with |Z| > threshold
+    z_matrix['n_outlier_metrics'] = (z_matrix.abs() > z_thresh).sum(axis=1)
+    z_matrix_sorted = z_matrix.sort_values('n_outlier_metrics', ascending=False)
+
+    # attach sample IDs for the y-axis
+    if 's' in df.columns:
+        sample_ids = df.loc[valid_idx, 's']
+        z_matrix_sorted.index = sample_ids[z_matrix_sorted.index].values
+
+    n_flagged = (z_matrix_sorted['n_outlier_metrics'] > 0).sum()
+    print(f"[Z-score] {n_flagged} / {len(z_matrix_sorted)} samples have at least "
+          f"one metric with |Z| > {z_thresh}")
+
+    metric_cols = [METRIC_LABELS.get(m, m) for m in metrics]
+
+    # figure 1 : full cohort overview (clipped display) 
+    display_df = z_matrix_sorted[metric_cols].head(max_samples_display)
+
+    row_h   = max(0.18, min(0.5, 12 / max(len(display_df), 1)))
+    fig_h   = max(5, len(display_df) * row_h + 2)
+    fig_w   = max(8, len(metrics) * 1.2 + 2)
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    sns.heatmap(
+        display_df,
+        cmap='RdBu_r', center=0,
+        vmin=-4, vmax=4,
+        linewidths=0.3 if len(display_df) < 80 else 0,
+        ax=ax,
+        yticklabels=(len(display_df) <= 80),
+        cbar_kws={'label': 'Z-score', 'shrink': 0.6}
+    )
+
+    # draw threshold contour lines
+    ax.axvline(x=0, color='black', linewidth=0.5)
+
+    title_suffix = (f' (top {max_samples_display} by #flagged metrics)'
+                    if len(z_matrix_sorted) > max_samples_display else '')
+    ax.set_title(
+        f'Z-score Heatmap — QC Metrics per Sample{title_suffix}\n'
+        f'|Z| > {z_thresh} = outlier   |   sorted by number of flagged metrics',
+        fontsize=11, fontweight='bold'
+    )
+    ax.set_xlabel('QC Metric', fontsize=10)
+    ax.set_ylabel('Sample', fontsize=10)
+    plt.tight_layout()
+
+    hpath = f'{name_prefix}_zscore_heatmap.png'
+    plt.savefig(hpath, dpi=150, bbox_inches='tight')
+    plt.clf()
+    print(f"  → saved {hpath}")
+
+    # figure 2 : bar chart — how many samples fail N metrics 
+    counts = z_matrix_sorted['n_outlier_metrics'].value_counts().sort_index()
+
+    fig2, ax2 = plt.subplots(figsize=(8, 4))
+    bars = ax2.bar(counts.index.astype(str), counts.values,
+                   color=['#4C9BE8' if i == 0 else '#E87B4C' for i in counts.index],
+                   edgecolor='white', linewidth=0.8)
+    for bar, val in zip(bars, counts.values):
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                 str(val), ha='center', va='bottom', fontsize=9)
+
+    ax2.set_xlabel('Number of metrics with |Z| > threshold', fontsize=10)
+    ax2.set_ylabel('Number of samples',                      fontsize=10)
+    ax2.set_title(f'Samples by Number of Flagged QC Metrics (|Z| > {z_thresh})',
+                  fontsize=11, fontweight='bold')
+    ax2.set_xticks(range(len(counts)))
+    ax2.set_xticklabels(counts.index.astype(str))
+    plt.tight_layout()
+
+    bpath = f'{name_prefix}_zscore_flagcount.png'
+    plt.savefig(bpath, dpi=150, bbox_inches='tight')
+    plt.clf()
+    print(f"  → saved {bpath}")
+
+    # figure 3 : per-metric Z-score distributions 
+    n_met = len(metrics)
+    ncols = min(3, n_met)
+    nrows = int(np.ceil(n_met / ncols))
+
+    fig3, axes3 = plt.subplots(nrows, ncols,
+                                figsize=(ncols * 4, nrows * 3),
+                                squeeze=False)
+    for i, metric in enumerate(metric_cols):
+        row, col = divmod(i, ncols)
+        ax3 = axes3[row][col]
+        z_vals = z_matrix_sorted[metric]
+
+        ax3.hist(z_vals, bins=40, color='#4C9BE8', edgecolor='white', alpha=0.8)
+        ax3.axvline( z_thresh, color='red',  linestyle='--', linewidth=1.2, label=f'+{z_thresh}σ')
+        ax3.axvline(-z_thresh, color='red',  linestyle='--', linewidth=1.2, label=f'-{z_thresh}σ')
+        ax3.axvline( 0,        color='grey', linestyle='-',  linewidth=0.8)
+
+        n_out = (z_vals.abs() > z_thresh).sum()
+        ax3.set_title(f'{metric}\n(n outliers = {n_out})', fontsize=9)
+        ax3.set_xlabel('Z-score', fontsize=8)
+        ax3.set_ylabel('Count',   fontsize=8)
+        ax3.legend(fontsize=7)
+
+    # hide unused subplots
+    for j in range(i + 1, nrows * ncols):
+        row, col = divmod(j, ncols)
+        axes3[row][col].set_visible(False)
+
+    fig3.suptitle('Per-Metric Z-score Distributions', fontsize=12, fontweight='bold')
+    plt.tight_layout()
+    dpath = f'{name_prefix}_zscore_distributions.png'
+    plt.savefig(dpath, dpi=150, bbox_inches='tight')
+    plt.clf()
+    print(f"  → saved {dpath}")
+
+    return z_matrix_sorted   # caller can inspect
+
+
+def create_outlier_plots(mt, z_thresh: float = 3.0, name_prefix: str = 'sample_qc', collected: dict = None, sample_ids: list = None):
+    """
+    Run both PCA and Z-score analyses and save all plots.
+
+    Returns
+    -------
+    pc_df       : DataFrame with PC scores + outlier flag
+    zscore_df   : DataFrame with Z-scores + n_outlier_metrics column
+    """
+    
+    print("=== PCA on QC metrics ===")
+    pc_df = plot_pca_qc(mt, z_thresh=z_thresh, name_prefix=name_prefix, collected=collected, sample_ids=sample_ids)
+
+    print("\n=== Z-score heatmap ===")
+    zscore_df = plot_zscore_heatmap(mt, z_thresh=z_thresh, name_prefix=name_prefix)
+
+    # ── combined outlier summary ──────────────────────────────────────────
+    pca_outliers    = set(pc_df[pc_df['outlier']].index)
+    zscore_outliers = set(zscore_df[zscore_df['n_outlier_metrics'] > 0].index)
+    both            = pca_outliers & zscore_outliers
+
+    print(f"\n{'='*50}")
+    print(f"  PCA outliers          : {len(pca_outliers)}")
+    print(f"  Z-score outliers      : {len(zscore_outliers)}")
+    print(f"  Flagged by BOTH       : {len(both)}  ← high-confidence")
+    print(f"{'='*50}")
+
+    return pc_df, zscore_df
 
 def create_stats(mt, field_path, aggregate):
     """
@@ -210,8 +595,7 @@ def create_stats(mt, field_path, aggregate):
     except Exception as e:
         logging.error(f"Error calculating statistics for {field_path}: {e}")
         return None
-        
-    
+           
 def verbosity_counts_variants(mt, filter_name, filter_step, summary, stats):
     """
     Calculates the number of variants deleted per qc step
@@ -279,7 +663,6 @@ def print_config(d, prefix=""):
     else:
         logging.info(f" {prefix}{d}")
 
-
 config = load_config()
 
 def rename_chr(mt, ref_gen): 
@@ -340,6 +723,338 @@ def rename_chr(mt, ref_gen):
     
     return mt
 
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+def create_distribution_plots(mt, sequencingType, basename):
+    """
+    Creates interactive histogram plots for all QC metrics with threshold lines.
+    :param mt: MatrixTable after hl.sample_qc() and run_charr()
+    :param sequencingType: 'WES' or 'WGS'
+    :param basename: prefix for output file
+    """
+
+    # collect metrics
+    has_charr  = 'charr' in mt.col
+    extra      = ['charr'] if has_charr else []
+    rows       = mt.cols().key_by().select('s', 'sample_qc', *extra).collect()
+
+    metrics = [
+        {
+            'name':           'Mean DP',
+            'extractor':      lambda r: r.sample_qc.dp_stats.mean,
+            'config_key':     f'DP_STATS.MEAN_{sequencingType}_threshold',
+            'threshold_type': 'lower',
+        },
+        {
+            'name':           'Ti/Tv ratio',
+            'extractor':      lambda r: r.sample_qc.r_ti_tv,
+            'config_key':     f'R_TI_TV_{sequencingType}_threshold',
+            'threshold_type': 'interval',
+        },
+        {
+            'name':           'Call Rate',
+            'extractor':      lambda r: r.sample_qc.call_rate,
+            'config_key':     'CALL_RATE_threshold',
+            'threshold_type': 'lower',
+        },
+        {
+            'name':           'N Singletons',
+            'extractor':      lambda r: r.sample_qc.n_singleton,
+            'config_key':     f'N_SINGLETON_{sequencingType}_threshold',
+            'threshold_type': 'upper',
+        },
+        {
+            'name':           'Het/Hom ratio',
+            'extractor':      lambda r: r.sample_qc.r_het_hom_var,
+            'config_key':     f'R_HET_HOM_VAR_{sequencingType}_threshold',
+            'threshold_type': 'upper',
+        },
+        {
+            'name':           'CHARR',
+            'extractor':      lambda r: r.charr if has_charr else None,
+            'config_key':     'CHARR_threshold',
+            'threshold_type': 'upper',
+        },
+    ]
+
+    ncols = 3
+    nrows = int(np.ceil(len(metrics) / ncols))
+
+    fig = make_subplots(
+        rows=nrows, cols=ncols,
+        subplot_titles=[m['name'] for m in metrics],
+        vertical_spacing=0.15,
+        horizontal_spacing=0.08
+    )
+
+    for i, mdef in enumerate(metrics):
+        row = i // ncols + 1
+        col = i %  ncols + 1
+
+        # extract values
+        vals = []
+        for r in rows:
+            try:
+                v = mdef['extractor'](r)
+                vals.append(float(v) if v is not None else np.nan)
+            except Exception:
+                vals.append(np.nan)
+
+        vals = np.array(vals, dtype=float)
+        valid_vals = vals[~np.isnan(vals)]
+
+        if len(valid_vals) == 0:
+            continue
+
+        # histogram
+        fig.add_trace(
+            go.Histogram(
+                x=valid_vals,
+                nbinsx=40,
+                marker_color='#4C9BE8',
+                opacity=0.8,
+                name=mdef['name'],
+                showlegend=False,
+                hovertemplate='Value: %{x:.4f}<br>Count: %{y}<extra></extra>',
+            ),
+            row=row, col=col
+        )
+
+        # threshold lines
+        threshold = config['sample_filters'].get(mdef['config_key'])
+        if threshold is not None:
+            if mdef['threshold_type'] == 'lower':
+                fig.add_vline(
+                    x=threshold,
+                    line_dash='dash', line_color='red', line_width=1.5,
+                    row=row, col=col
+                )
+            elif mdef['threshold_type'] == 'upper':
+                fig.add_vline(
+                    x=threshold,
+                    line_dash='dash', line_color='red', line_width=1.5,
+                    row=row, col=col
+                )
+            elif mdef['threshold_type'] == 'interval':
+                lower, upper = threshold
+                fig.add_vline(
+                    x=lower,
+                    line_dash='dash', line_color='red', line_width=1.5,
+                    row=row, col=col
+                )
+                fig.add_vline(
+                    x=upper,
+                    line_dash='dash', line_color='orange', line_width=1.5,
+                    row=row, col=col
+                )
+
+    fig.update_layout(
+        title=dict(
+            text=f'Sample QC Metric Distributions — {sequencingType} | {basename}',
+            font=dict(size=16)
+        ),
+        height=400 * nrows,
+        width=1400,
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        font=dict(size=11),
+        bargap=0.05,
+    )
+
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=True, gridcolor='#eeeeee', title_text='Count')
+
+    outpath = f'{basename}_sample_qc_distribution.html'
+    fig.write_html(outpath)
+    logging.info(f"Interactive distribution plot saved to: {outpath}")
+    
+def create_distribution_plots_points(mt, sequencingType, basename):
+    """
+    Creates interactive distribution plots (one point per sample) for all QC metrics,
+    with hard thresholds drawn as lines and outlier samples tagged on hover.
+    :param mt: MatrixTable after hl.sample_qc() and run_charr()
+    :param sequencingType: 'WES' or 'WGS'
+    :param basename: prefix for output file
+    """
+
+    # ── collect metrics ───────────────────────────────────────────────────────
+    has_charr  = 'charr' in mt.col
+    extra      = ['charr'] if has_charr else []
+    rows       = mt.cols().key_by().select('s', 'sample_qc', *extra).collect()
+    sample_ids = [r.s for r in rows]
+
+    # ── metric definitions ────────────────────────────────────────────────────
+    # (display_name, extractor, config_key_or_keys, lower_or_upper_or_interval)
+    # threshold_type: 'lower', 'upper', 'interval'
+    metrics = [
+        {
+            'name':           'Mean DP',
+            'extractor':      lambda r: r.sample_qc.dp_stats.mean,
+            'config_key':     f'DP_STATS.MEAN_{sequencingType}_threshold',
+            'threshold_type': 'lower',
+        },
+        {
+            'name':           'Ti/Tv ratio',
+            'extractor':      lambda r: r.sample_qc.r_ti_tv,
+            'config_key':     f'R_TI_TV_{sequencingType}_threshold',
+            'threshold_type': 'interval',
+        },
+        {
+            'name':           'Call Rate',
+            'extractor':      lambda r: r.sample_qc.call_rate,
+            'config_key':     'CALL_RATE_threshold',
+            'threshold_type': 'lower',
+        },
+        {
+            'name':           'N Singletons',
+            'extractor':      lambda r: r.sample_qc.n_singleton,
+            'config_key':     f'N_SINGLETON_{sequencingType}_threshold',
+            'threshold_type': 'upper',
+        },
+        {
+            'name':           'Het/Hom ratio',
+            'extractor':      lambda r: r.sample_qc.r_het_hom_var,
+            'config_key':     f'R_HET_HOM_VAR_{sequencingType}_threshold',
+            'threshold_type': 'upper',
+        },
+        {
+            'name':           'CHARR',
+            'extractor':      lambda r: r.charr if has_charr else None,
+            'config_key':     'CHARR_threshold',
+            'threshold_type': 'upper',
+        },
+    ]
+
+    # ── build subplots ────────────────────────────────────────────────────────
+    n_metrics = len(metrics)
+    ncols     = 3
+    nrows     = int(np.ceil(n_metrics / ncols))
+
+    fig = make_subplots(
+        rows=nrows, cols=ncols,
+        subplot_titles=[m['name'] for m in metrics],
+        vertical_spacing=0.12,
+        horizontal_spacing=0.08
+    )
+
+    for i, mdef in enumerate(metrics):
+        row = i // ncols + 1
+        col = i %  ncols + 1
+
+        # extract values
+        vals = []
+        for r in rows:
+            try:
+                v = mdef['extractor'](r)
+                vals.append(float(v) if v is not None else np.nan)
+            except Exception:
+                vals.append(np.nan)
+
+        vals = np.array(vals, dtype=float)
+
+        # get threshold from config
+        threshold = config['sample_filters'].get(mdef['config_key'])
+
+        # determine pass/fail per sample
+        def is_outlier(v, threshold, threshold_type):
+            if np.isnan(v) or threshold is None:
+                return False
+            if threshold_type == 'lower':
+                return v < threshold
+            elif threshold_type == 'upper':
+                return v > threshold
+            elif threshold_type == 'interval':
+                lower, upper = threshold
+                return v < lower or v > upper
+
+        outlier_mask = np.array([
+            is_outlier(v, threshold, mdef['threshold_type']) for v in vals
+        ])
+
+        x_pass    = np.where(~outlier_mask)[0]
+        x_fail    = np.where( outlier_mask)[0]
+        ids_pass  = [sample_ids[j] for j in x_pass]
+        ids_fail  = [sample_ids[j] for j in x_fail]
+        vals_pass = vals[~outlier_mask]
+        vals_fail = vals[ outlier_mask]
+
+        # passing samples
+        fig.add_trace(
+            go.Scatter(
+                x=list(range(len(x_pass))),
+                y=vals_pass,
+                mode='markers',
+                marker=dict(color='#4C9BE8', size=4, opacity=0.7),
+                name='Pass',
+                text=ids_pass,
+                hovertemplate='<b>%{text}</b><br>Value: %{y:.4f}<extra></extra>',
+                showlegend=(i == 0),
+                legendgroup='pass'
+            ),
+            row=row, col=col
+        )
+
+        # failing samples
+        if len(x_fail) > 0:
+            fig.add_trace(
+                go.Scatter(
+                    x=list(range(len(x_fail))),
+                    y=vals_fail,
+                    mode='markers',
+                    marker=dict(color='red', size=6, opacity=0.9, symbol='x'),
+                    name='Outlier',
+                    text=ids_fail,
+                    hovertemplate='<b>%{text}</b><br>Value: %{y:.4f}<extra></extra>',
+                    showlegend=(i == 0),
+                    legendgroup='outlier'
+                ),
+                row=row, col=col
+            )
+
+        # threshold lines
+        if threshold is not None:
+            if mdef['threshold_type'] in ('lower', 'upper'):
+                fig.add_hline(
+                    y=threshold,
+                    line_dash='dash', line_color='red', line_width=1.5,
+                    row=row, col=col
+                )
+            elif mdef['threshold_type'] == 'interval':
+                lower, upper = threshold
+                fig.add_hline(
+                    y=lower,
+                    line_dash='dash', line_color='red', line_width=1.5,
+                    row=row, col=col
+                )
+                fig.add_hline(
+                    y=upper,
+                    line_dash='dash', line_color='orange', line_width=1.5,
+                    row=row, col=col
+                )
+
+    # ── layout ────────────────────────────────────────────────────────────────
+    fig.update_layout(
+        title=dict(
+            text=f'Sample QC Metrics — {sequencingType} | {basename}',
+            font=dict(size=16)
+        ),
+        height=400 * nrows,
+        width=1400,
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        font=dict(size=11),
+    )
+
+    fig.update_xaxes(showticklabels=False, showgrid=False)
+    fig.update_yaxes(showgrid=True, gridcolor='#eeeeee')
+
+    # ── save ──────────────────────────────────────────────────────────────────
+    outpath = f'{basename}_sample_qc_distribution.html'
+    fig.write_html(outpath)
+    logging.info(f"Interactive distribution plot saved to: {outpath}")
+
+    return sample_ids
 
 """mt = hl.read_matrix_table(config['mt_from_vcf'])
 create_stats_samples(mt, mt.sample_qc.dp_stats)"""

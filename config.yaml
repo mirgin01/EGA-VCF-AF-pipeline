@@ -1,256 +1,284 @@
 ## ============================================================
 ## HAIL PIPELINE CONFIGURATION FILE
 ## ============================================================
-## Docker mount points (when running inside Docker container):
-##   Input files  → /data/input
-##   Output files → /data/output
-##   Intermediate → /data/work
+## Docker mount points:
+##   Input files  -> /data/input
+##   Output files -> /data/output
+##   Work files   -> /data/work
+##
+## Suggested reading order:
+##   1) General setup
+##   2) Modules to run
+##   3) Preprocessing substeps
+##   4) Thresholds
+##   5) Diagnostics
+##   6) Spark / runtime
 ## ============================================================
 
 
-## ------------------------------------------------------------
-## PATHS
-## Core input/output paths for the pipeline.
-## ------------------------------------------------------------
+## ============================================================
+## 1. GENERAL SETUP
+## Core paths and dataset-wide settings
+## ============================================================
 
-vcf_dir : "input"
-# Directory containing all input VCF files. IMPORTANT: all VCFs must share
-# the same reference genome. 
+vcf_dir: "input"
+# Directory containing all input VCF files.
+# IMPORTANT: all VCFs must use the same reference genome.
 # Docker path: /data/input
 
-vcf_for_header : "input/GCAT-EGAD00001007774-af_annotated.vcf.bgz" # TODO: Take out this and just use one of the vcf in vcf_dir
-# A representative VCF whose header will be used to build the final output VCF header.
+vcf_for_header: "input/GCAT-EGAD00001007774-af_annotated.vcf.bgz"
+# Representative VCF used to build the final output VCF header.
+# TODO: ideally remove this and use one file automatically from vcf_dir.
 # Docker path: /data/input/filename.vcf.gz
 
-ref_gen : "GRCh37"
+ref_gen: "GRCh37"
 # Reference genome build used by the input VCFs.
 # Accepted values: "GRCh37" | "GRCh38"
 
-seq_type : "WGS"
-# Sequencing strategy. Affects which QC thresholds are applied (see sample_filters below).
+seq_type: "WGS"
+# Sequencing strategy.
+# Affects sample QC thresholds in sample_filters.
 # Accepted values: "WGS" | "WES"
 
+
+## ============================================================
+## 2. INTERMEDIATE AND FINAL OUTPUTS
+## Files produced by the pipeline
+## ============================================================
+
 mt_from_vcf: "work/GCAT.mt"
-# Path where the MatrixTable produced by preprocessing will be saved.
+# MatrixTable generated during preprocessing.
 # Docker path: /data/work/filename.mt
 
 mt_afterQC: "work/GCAT_afterQC.mt"
-# Path where the post-QC MatrixTable will be saved.
+# MatrixTable after QC steps.
 # Docker path: /data/work/filename_afterQC.mt
 
-final_vcf_AF : "output/synthethic_afterHail.vcf.bgz"
-## Only relevant when af_annotation = true.
-# Full path for the output VCF annotated with recalculated allele frequencies.
+final_vcf_AF: "output/synthethic_afterHail.vcf.bgz"
+# Final output VCF annotated with recalculated allele frequencies.
+# Only relevant when af_annotation = true.
 # Docker path: /data/output/your_output_name.vcf.bgz
 
-summary_VCF : false
-# If true, the output VCF will contain only variant-level information —
-# no sample columns or genotype data will be included.
+summary_VCF: false
+# If true, the output VCF will contain only variant-level information
+# (no sample columns or genotype data).
 
-## ------------------------------------------------------------
-## MODULES TO RUN
-## Enable or disable each pipeline module independently.
-## Set to true to run, false to skip.
-## ------------------------------------------------------------
 
-preprocessing : true
-# Runs the preprocessing module: VCF conversion, splitting, and initial filtering.
-# Set to false if a MatrixTable has already been generated (mt_from_vcf exists).
+## ============================================================
+## 3. MAIN MODULES TO RUN
+## Turn complete modules on/off
+## ============================================================
+## Set to true to run a module, false to skip it.
+##
+## Notes:
+## - preprocessing = false assumes mt_from_vcf already exists
+## - infer_ancestry and submit_ancestry are mutually exclusive
+## ============================================================
 
-infer_sex : true
-# Infers biological sex from genotype data and flags mismatches with reported sex.
+preprocessing: true
+# Runs preprocessing: VCF conversion, splitting, and initial filtering.
+
+infer_sex: false
+# Infers biological sex from genotype data and flags mismatches.
 
 delete_related: false
-# Identifies and removes related samples (e.g. duplicates, first-degree relatives)
-# using kinship estimation before downstream analysis.
+# Detects and removes related samples (duplicates / close relatives).
 
-# Ancestry analysis options:
-# - infer_ancestry and submit_ancestry are mutually exclusive.
-# - If infer_ancestry = true, submit_ancestry MUST be false.
-# - Both can be false (i.e., skip ancestry processing entirely).
+infer_ancestry: false
+# Infer ancestry from genotype data using GrafAnc.
+# Must be false if submit_ancestry = true.
 
-infer_ancestry : false
-# If true, ancestry is inferred from genotype data using GrafAnc.
-# Must be false if submit_ancestry is true.
+submit_ancestry: false
+# Read ancestry labels from ancestry_information file.
+# Must be false if infer_ancestry = true.
 
-submit_ancestry: true
-# If true, ancestry labels are read from an external CSV (ancestry_information).
-# Must be false if infer_ancestry is true.
-
-ancestry_information : "gcat-submitted-metadata.csv"
-# Path to a CSV file with known ancestry labels for each sample.
+ancestry_information: "gcat-submitted-metadata.csv"
+# CSV with known ancestry labels.
 # Only used when submit_ancestry = true.
 # Required columns (tab-separated header): SampleID,Population
 
-af_annotation : true
-# If true, allele frequencies are recalculated and annotated in the output VCF.
+af_annotation: false
+# Recalculate allele frequencies and annotate the final VCF.
 
 
-## ------------------------------------------------------------
-## PREPROCESSING STEPS
-## Fine-grained control over which preprocessing sub-steps run.
-## Only relevant when preprocessing = true.
-## ------------------------------------------------------------
+## ============================================================
+## 4. PREPROCESSING SUBSTEPS
+## Only relevant when preprocessing = true
+## ============================================================
+## Typical first run:
+##   convert_vcfs: true
+##   split_multiallelic: true
+## Then enable filtering steps as needed.
+## ============================================================
 
-convert_vcfs : true
-# Converts input VCFs to a Hail MatrixTable. Must be true on first run.
+convert_vcfs: false
+# Convert input VCFs into a Hail MatrixTable.
+# Must be true on first run.
 
-split_multiallelic : true
-# Splits multiallelic sites into biallelic rows, required for most downstream tools.
+split_multiallelic: false
+# Split multiallelic variants into biallelic rows.
 
-genotype_filtering : false
-# Applies genotype-level filters (GQ, allele balance). See genotype_filters below.
+genotype_filtering: false
+# Apply genotype-level filters using genotype_filters below.
 
-variant_filtering : false
-# Applies variant-level filters (QD, DP, QUAL, etc.). See variant_filters below.
+variant_filtering: false
+# Apply variant-level filters using variant_filters below.
 
-sample_filtering : false
-# Applies sample-level QC filters (call rate, het/hom ratio, etc.). See sample_filters below.
+sample_filtering: true
+# Apply sample-level QC using sample_filters below.
 
 
-## ------------------------------------------------------------
-## VARIANT FILTERING THRESHOLDS
-## Applied during the variant_filtering step.
-## To disable a specific filter, comment out its value with a '#'
-## e.g.  QD_threshold : #2.0
-## ------------------------------------------------------------
+## ============================================================
+## 5. VARIANT FILTERING THRESHOLDS
+## Used only if variant_filtering = true
+## ============================================================
+## To disable a filter, leave it commented like:
+##   QD_threshold: #2.0
+## ============================================================
 
 variant_filters:
-  QD_threshold : 2.0       # Quality by Depth. Variants below this are low-confidence calls.
-  DP_threshold : 15         # Minimum total read depth across the cohort at a site.
-  QUAL_threshold : 40       # Minimum Phred-scaled variant quality score.
-  MQ_threshold : 40         # Mapping Quality. Filters sites with poor read alignment.
-  FS_threshold : 60         # Fisher Strand bias. High values indicate strand-specific artifacts.
-  READPOSRANKSUM_threshold : -8.0
-  # Read Position Rank Sum. Filters variants where alt alleles cluster at read ends.
+  QD_threshold: #2.0
+  # Quality by Depth. Low values suggest low-confidence variants.
+
+  DP_threshold: #15
+  # Minimum total read depth across the cohort at a site.
+
+  QUAL_threshold: 0.4
+  # Minimum Phred-scaled variant quality score.
+
+  MQ_threshold: 40
+  # Mapping quality. Filters poorly aligned sites.
+
+  FS_threshold: 60
+  # Fisher Strand bias. High values suggest strand-specific artifacts.
+
+  READPOSRANKSUM_threshold: -8.0
+  # Filters variants where alt alleles cluster near read ends.
 
 
-## ------------------------------------------------------------
-## GENOTYPE FILTERING THRESHOLDS
-## Applied at the individual genotype call level.
-## To disable a specific filter, comment out its value with a '#'.
-## ------------------------------------------------------------
+## ============================================================
+## 6. GENOTYPE FILTERING THRESHOLDS
+## Used only if genotype_filtering = true
+## ============================================================
+## To disable a filter, leave it commented.
+## ============================================================
 
 genotype_filters:
-  GQ_threshold : 20
-  # Genotype Quality. Calls below this threshold are set to missing.
+  GQ_threshold: 20
+  # Genotype Quality. Calls below this are set to missing.
 
-  AB_threshold : 0.2
-  # Allele Balance (for heterozygous calls). Genotypes where the alt allele fraction
-  # falls below this value are considered likely false positives and set to missing.
+  AB_threshold: #0.2
+  # Allele Balance for heterozygous calls.
+  # Calls below this threshold are set to missing.
 
 
-## ------------------------------------------------------------
-## SAMPLE FILTERING THRESHOLDS
-## Applied during the sample_filtering step.
-## Thresholds are split by sequencing type (WGS/WES) where relevant.
-## To disable a specific filter, comment out its value with a '#'.
-## ------------------------------------------------------------
+## ============================================================
+## 7. SAMPLE FILTERING THRESHOLDS
+## Used only if sample_filtering = true
+## ============================================================
+## Some thresholds depend on seq_type (WGS vs WES).
+## To disable a filter, leave it commented.
+## ============================================================
 
 sample_filters:
-  DP_STATS.MEAN_WGS_threshold : 15
-  # Minimum mean read depth for WGS samples. Samples below this are removed.
+  DP_STATS.MEAN_WGS_threshold: #15
+  # Minimum mean read depth for WGS samples.
 
-  DP_STATS.MEAN_WES_threshold : 10
-  # Minimum mean read depth for WES samples. Samples below this are removed.
+  DP_STATS.MEAN_WES_threshold: #10
+  # Minimum mean read depth for WES samples.
 
-  CALL_RATE_threshold : 0.95
+  CALL_RATE_threshold: 0.95
   # Minimum fraction of non-missing genotype calls per sample.
-  # Samples with a call rate below this are removed.
 
-  R_HET_HOM_VAR_WGS_threshold : 3.3
-  # Maximum heterozygous/homozygous-variant ratio for WGS samples.
-  # High values may indicate contamination or alignment errors.
+  R_HET_HOM_VAR_WGS_threshold: 3.3
+  # Maximum heterozygous / homozygous-variant ratio for WGS.
 
-  R_HET_HOM_VAR_WES_threshold : #0
-  # Maximum het/hom ratio for WES samples. Currently disabled (commented out).
+  R_HET_HOM_VAR_WES_threshold: 10
+  # Maximum heterozygous / homozygous-variant ratio for WES.
 
-  N_SINGLETON_WGS_threshold : 100000
-  # Maximum number of singleton variants (variants unique to one sample) for WGS.
-  # Unusually high counts can indicate contamination or poor sample quality.
+  N_SINGLETON_WGS_threshold: 100000
+  # Maximum singleton count for WGS.
 
-  N_SINGLETON_WES_threshold : 5000
-  # Maximum number of singleton variants for WES samples.
+  N_SINGLETON_WES_threshold: 5000
+  # Maximum singleton count for WES.
 
-  CHARR_threshold : 0.05
-  # Contamination estimate (CHARR score). Samples above this are flagged/removed.
+  CHARR_threshold: #0.05
+  # Contamination estimate threshold.
 
-  R_TI_TV_WES_threshold : #[3.0 , 3.3]
-  # Expected Transition/Transversion ratio range for WES. Currently disabled.
-  # Enable by providing a [min, max] range, e.g. [3.0, 3.3]
+  R_TI_TV_WES_threshold: [3.0, 3.3]
+  # Expected Ti/Tv ratio range for WES: [min, max].
 
-  R_TI_TV_WGS_threshold : #[2.0 , 2.1]
-  # Expected Ti/Tv ratio range for WGS. Currently disabled.
-  # Enable by providing a [min, max] range, e.g. [2.0, 2.1]
+  R_TI_TV_WGS_threshold: [2.0, 2.1]
+  # Expected Ti/Tv ratio range for WGS: [min, max].
 
-gnomad_sites_GRCh37 : ""
-# Path to the gnomAD sites Hail Table for GRCh37, used for CHARR computation.
+
+## ============================================================
+## 8. EXTERNAL RESOURCES
+## Optional files needed by some QC calculations
+## ============================================================
+
+gnomad_sites_GRCh37: ""
+# Path to gnomAD sites Hail Table for GRCh37.
+# Used for CHARR computation.
 # Docker path: /data/input/gnomad.genomes.r2.1.1.sites.ht
 
-gnomad_sites_GRCh38 : ""
-# Path to the gnomAD sites Hail Table for GRCh38, used for CHARR computation.
+gnomad_sites_GRCh38: ""
+# Path to gnomAD sites Hail Table for GRCh38.
+# Used for CHARR computation.
 # Docker path: /data/input/gnomad.genomes.v4.1.sites.ht
 
-## ------------------------------------------------------------
-## LOGGING & DIAGNOSTICS
-## Controls verbosity and optional QC plots.
-## ------------------------------------------------------------
 
-verbosity : true
-# If true, a CSV file tracking the number of variants removed at each QC step
-# will be generated. Useful for auditing, but increases execution time.
+## ============================================================
+## 9. LOGGING AND QC DIAGNOSTICS
+## Optional outputs for auditing and visual inspection
+## ============================================================
+
+verbosity: true
+# If true, generate a CSV tracking how many variants are removed at each QC step.
 
 plots: true
-# If true, box plots showing the distribution of each sample-level QC metric
-# will be created. Helpful for visually validating filter thresholds.
+# If true, generate sample-level QC plots.
 
-## ------------------------------------------------------------
-## SPARK CONFIGURATION
-## Tune Spark settings to handle large datasets without crashes.
-## Only applied when cluster = True.
-## For single-machine runs, Hail uses default Spark settings.
-## ------------------------------------------------------------
 
-cluster : False
+## ============================================================
+## 10. SPARK / HAIL RUNTIME SETTINGS
+## Used when running on a cluster or with custom Spark settings
+## ============================================================
+## If cluster = false, default Spark settings are used.
+## ============================================================
+
+cluster: False
 # Set to True to apply the custom Spark configuration below.
-# Use this when running on a cluster or processing very large cohorts.
 
 spark_driver_memory: "50g"
-# Memory allocated to the Spark driver process.
-# Increase if the driver crashes on large MatrixTables.
+# Memory for Spark driver.
 
-spark_executor_memory : "20g"
-# Memory allocated to each Spark executor.
-# Total memory used ≈ spark_executor_memory × spark_executor_instances.
+spark_executor_memory: "20g"
+# Memory for each Spark executor.
 
 spark_executor_instances: "4"
-# Number of parallel Spark executors.
-# Adjust based on available cores and memory on your machine/cluster.
+# Number of executors.
 
 spark_executor_cores: "4"
-# Number of CPU cores assigned to each executor.
-# Total cores used = spark_executor_cores × spark_executor_instances.
+# CPU cores per executor.
 
 spark_rpc_askTimeout: "300s"
-# Timeout for Spark RPC (remote procedure call) operations.
-# Increase if you see timeout errors on slow or high-latency clusters.
+# Timeout for Spark RPC operations.
 
 spark_sql_shuffle_partitions: "200"
-# Number of partitions used during shuffle operations (e.g. joins, aggregations).
-# Lower values reduce overhead for moderately sized datasets.
+# Number of partitions used during shuffles.
 
 spark_network_timeout: "800s"
-# Maximum time Spark waits for a network response before failing.
-# Increase for slow network connections or heavily loaded clusters.
+# Maximum Spark network wait time.
 
 spark_local_dir: "/work/tmp"
-# Local directory used by Spark for temporary shuffle and spill files.
+# Spark temporary directory.
 # Docker path: /data/work/tmp
 
 tmp_dir: "/work/tmp"
-# Hail temporary directory for intermediate MatrixTables and Tables.
+# Hail temporary directory.
 # Docker path: /data/work/tmp
 
 local_tmpdir: "/work/tmp"
-# Local temporary directory for Hail operations that write to the local filesystem.
+# Local temporary directory for Hail filesystem operations.
 # Docker path: /data/work/tmp

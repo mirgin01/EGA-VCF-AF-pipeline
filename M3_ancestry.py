@@ -107,7 +107,6 @@ def annotate_ancestry(ancestry_results, mt):
         mt = mt.annotate_cols(ancestry=ancestry_table[mt.s].AncGroupNAME)
     if config['submit_ancestry']:
         ancestry_table = hl.import_table(ancestry_results, delimiter=",", impute=True)
-        ancestry_table.describe()
         ancestry_table = ancestry_table.select('SampleID', 'Population')
         ancestry_table = ancestry_table.key_by('SampleID')
         mt = mt.annotate_cols(ancestry=ancestry_table[mt.s].Population)

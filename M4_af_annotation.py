@@ -186,13 +186,13 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
             # Create the key for this ancestry + XY combination
             if has_sex:
                 anc_xy_key = hl.struct(ancestry=ancestry, sex="XY")
-                AF_ancestry[f"nhemi{ancestry}_recalc"] = hl.if_else(
+                AF_ancestry[f"nhemi_{ancestry}_recalc"] = hl.if_else(
                     ~mt.locus.in_autosome_or_par(),
                     hl.or_else(mt.gt_stats_by_ancestry_sex.get(anc_xy_key).AC[1], 0), 0)
             else:
-                AF_ancestry[f"nhemi{ancestry}_recalc"] = hl.int32(0)
+                AF_ancestry[f"nhemi_{ancestry}_recalc"] = hl.int32(0)
 
-            AF_ancestry[f"nhet_{ancestry}_recalc"] = AF_ancestry[f"AC_{ancestry}_recalc"] - 2*AF_ancestry[f"nhom_{ancestry}_recalc"] - AF_ancestry[f"nhemi{ancestry}_recalc"]
+            AF_ancestry[f"nhet_{ancestry}_recalc"] = AF_ancestry[f"AC_{ancestry}_recalc"] - 2*AF_ancestry[f"nhom_{ancestry}_recalc"] - AF_ancestry[f"nhemi_{ancestry}_recalc"]
     else:
         AF_ancestry={}
 
