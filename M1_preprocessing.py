@@ -232,10 +232,13 @@ def variant_filtering(mt):
             
             if config['verbosity']:
                 stats = create_stats(mt, "info.QD", "rows")            
-                summary = verbosity_counts_variants(mt, "QD", mt.info.QD >= config['variant_filters']['QD_threshold'], summary, stats)                      
+                summary = verbosity_counts_variants(mt, "QD", 
+                hl.is_defined(mt.info.QD) & (mt.info.QD < config['variant_filters']['QD_threshold']), 
+                summary, stats)
 
             # actually apply the filter to the mt
-            mt = mt.filter_rows(mt.info.QD >= config['variant_filters']['QD_threshold'])
+            mt = mt.filter_rows(hl.is_missing(mt.info.QD) | (mt.info.QD >= config['variant_filters']['QD_threshold']))
+
             logging.info("QD filtering done")
         
         else:
@@ -277,7 +280,8 @@ def variant_filtering(mt):
                 summary = verbosity_counts_variants(mt, "QUAL", mt.qual >= config['variant_filters']['QUAL_threshold'], summary, stats)
             
             
-            mt = mt.filter_rows(mt.qual >= config['variant_filters']['QUAL_threshold'])
+            mt = mt.filter_rows(hl.is_missing(mt.qual) | (mt.qual >= config['variant_filters']['QUAL_threshold']))
+
             logging.info("QUAL filtering done")
         
         except TypeError:
@@ -291,9 +295,11 @@ def variant_filtering(mt):
         if "MQ" in mt.info:
             if config['verbosity']:
                 stats = create_stats(mt, "info.MQ", "rows")
-                summary = verbosity_counts_variants(mt, "MQ", mt.info.MQ >= config['variant_filters']['MQ_threshold'], summary, stats)
-               
-            mt = mt.filter_rows(mt.info.MQ >= config['variant_filters']['MQ_threshold'])
+                summary = verbosity_counts_variants(mt, "MQ",
+                hl.is_defined(mt.info.MQ) & (mt.info.MQ < config['variant_filters']['MQ_threshold']),
+                summary, stats)
+            mt = mt.filter_rows(hl.is_missing(mt.info.MQ) | (mt.info.MQ >= config['variant_filters']['MQ_threshold']))
+
             logging.info("MQ filtering done")
         else:
             logging.error("MQ information not available - terminating pipeline")
@@ -306,9 +312,12 @@ def variant_filtering(mt):
         if "FS" in mt.info:
             if config['verbosity']:
                 stats = create_stats(mt, "info.FS", "rows")
-                summary = verbosity_counts_variants(mt, "FS", mt.info.FS <= config['variant_filters']['FS_threshold'], summary, stats)
+                summary = verbosity_counts_variants(mt, "FS",
+                hl.is_defined(mt.info.FS) & (mt.info.FS > config['variant_filters']['FS_threshold']),
+                summary, stats)
+                
+            mt = mt.filter_rows(hl.is_missing(mt.info.FS) | (mt.info.FS <= config['variant_filters']['FS_threshold']))
 
-            mt = mt.filter_rows(mt.info.FS <= config['variant_filters']['FS_threshold'])
             logging.info("FS filtering done")
         else:
             logging.error("FS information not available - terminating pipeline")
@@ -319,32 +328,6 @@ def variant_filtering(mt):
 
     if config['variant_filters']['READPOSRANKSUM_threshold'] is not None:
 
-        # Check if they're nan
-        n_nan = mt.aggregate_rows(hl.agg.count_where(hl.is_nan(mt.info.ReadPosRankSum)))
-        logging.info(f"NaN count: {n_nan}")
-
-        # Check if they're missing
-        n_missing = mt.aggregate_rows(hl.agg.count_where(hl.is_missing(mt.info.ReadPosRankSum)))
-        logging.info(f"Missing count: {n_missing}")
-
-        # Check what the filter_expr actually evaluates to
-        n_kept_by_missing_guard = mt.aggregate_rows(hl.agg.count_where(hl.is_nan(mt.info.ReadPosRankSum) | hl.is_missing(mt.info.ReadPosRankSum)))
-        logging.info(f"Kept by nan/missing guard: {n_kept_by_missing_guard}")
-
-        # Check what the full filter_expr evaluates to
-        n_passing = mt.aggregate_rows(hl.agg.count_where(
-            hl.is_nan(mt.info.ReadPosRankSum) | 
-            hl.is_missing(mt.info.ReadPosRankSum) | 
-            (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
-        ))
-        logging.info(f"Variants passing full filter_expr: {n_passing}")
-
-        # And total rows
-        n_total = mt.count_rows()
-        logging.info(f"Total rows: {n_total}")
-        
-        filter_expr = (hl.is_missing(mt.info.ReadPosRankSum)) | (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
-
         logging.info(mt.info.ReadPosRankSum.dtype)
         logging.info(mt.info.describe())
 
@@ -353,7 +336,7 @@ def variant_filtering(mt):
                 stats = create_stats(mt, "info.ReadPosRankSum", "rows")
                 summary = verbosity_counts_variants(mt, "ReadPosRankSum", mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'], summary, stats)
             
-            mt = mt.filter_rows(filter_expr)
+            mt = mt.filter_rows(hl.is_missing(mt.info.ReadPosRankSum) | (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold']))
 
             logging.info("ReadPosRankSum filtering done")
         else:
