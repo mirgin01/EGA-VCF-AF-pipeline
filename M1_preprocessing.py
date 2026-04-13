@@ -318,12 +318,16 @@ def variant_filtering(mt):
         logging.warning("FS threshold not set - FS filtering not performed ")
 
     if config['variant_filters']['READPOSRANKSUM_threshold'] is not None:
+        
+        filter_expr = (hl.is_missing(mt.info.ReadPosRankSum)) | (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
+
         if "ReadPosRankSum" in mt.info:
             if config['verbosity']:
                 stats = create_stats(mt, "info.ReadPosRankSum", "rows")
                 summary = verbosity_counts_variants(mt, "ReadPosRankSum", mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'], summary, stats)
             
-            mt = mt.filter_rows(mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
+            mt = mt.filter_rows(filter_expr)
+
             logging.info("ReadPosRankSum filtering done")
         else:
             logging.error("ReadPosRankSum information not available - terminating pipeline")
@@ -384,7 +388,6 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
 
     if config["plots"]:
         logging.info("Creating Sample Filters plots")
-        create_sample_plot(mt)
         create_distribution_plots(mt, sequencingType, basename)
 
 
@@ -408,7 +411,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
 
     
     # ti/tv ratio filtering
-    if config['sample_filters']['R_TI_TV_WES_threshold'] is not None or config['sample_filters']['R_TI_TV_WGS_threshold'] is not None:
+    """if config['sample_filters']['R_TI_TV_WES_threshold'] is not None or config['sample_filters']['R_TI_TV_WGS_threshold'] is not None:
         
         lower, upper = config['sample_filters']['R_TI_TV_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['R_TI_TV_WGS_threshold']
         
@@ -423,7 +426,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
             logging.error("Ti/Tv information not available - terminating pipeline")
             raise ValueError("Ti/Tv ratio information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
     else: 
-        logging.warning("Ti/Tv ratio threshold not set - Ti/Tv filtering not performed ")
+        logging.warning("Ti/Tv ratio threshold not set - Ti/Tv filtering not performed ")"""
 
     # Call rate filtering
     if config['sample_filters']['CALL_RATE_threshold'] is not None: 
@@ -479,7 +482,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
 
 
     # Het/Hom ratio filtering
-    if config['sample_filters']['R_HET_HOM_VAR_WES_threshold'] is not None or config['sample_filters']['R_HET_HOM_VAR_WGS_threshold'] is not None:
+    """if config['sample_filters']['R_HET_HOM_VAR_WES_threshold'] is not None or config['sample_filters']['R_HET_HOM_VAR_WGS_threshold'] is not None:
         if "r_het_hom_var" in mt.sample_qc:
             hard_cutoff = config['sample_filters']['R_HET_HOM_VAR_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['R_HET_HOM_VAR_WGS_threshold']
             
@@ -493,7 +496,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
             logging.error("Het/Hom ratio information not available - terminating pipeline")
             raise ValueError("Het/Hom information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
     else:
-        logging.warning("Het/hom ratio threshold not set - Het/hom ratio filtering not performed")
+        logging.warning("Het/hom ratio threshold not set - Het/hom ratio filtering not performed")"""
 
     if config['verbosity']:
         csv_writer(summary)
@@ -522,7 +525,7 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename):
         summary.append(["Filter", "Before", "After", "Removed", "Stats"])
 
     # Compute CHARR
-    try:
+    """try:
         if config['ref_gen'] == "GRCh37":
             if not config.get('gnomad_sites_GRCh37') or config['gnomad_sites_GRCh37'].strip() == '':
                 logging.error("gnomAD sites GRCh37 path is empty or not configured - check your conf.py")
@@ -540,7 +543,7 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename):
         if config['verbosity']:
             summary.append(["CHARR", "-", "-", "-", "Not available"])
         raise ValueError("CHARR information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
-
+    """
 
     # ── collect all metrics in one Hail action ────────────────────────────────
     # must happen after sample_qc and charr, before any filtering
@@ -550,11 +553,11 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename):
     collected = _collect_metrics(mt)
     
     logging.info("finished collecting metrics", collected)
+
     if config["plots"]:
         logging.info("Creating Sample Filters plots")
         sample_ids = create_distribution_plots(mt, sequencingType, basename)
-        create_outlier_plots(mt, z_thresh=3.0, name_prefix=get_name(),
-                            collected=collected, sample_ids=sample_ids)
+        #create_outlier_plots(mt, z_thresh=3.0, name_prefix=get_name(),collected=collected, sample_ids=sample_ids)
 
     # ── compute all MAD thresholds upfront ────────────────────────────────────
     thresholds = {
@@ -569,7 +572,7 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename):
     # ── apply filters ─────────────────────────────────────────────────────────
 
     # Minimum coverage filtering
-    if "dp_stats" in mt.sample_qc:
+    """if "dp_stats" in mt.sample_qc:
         mt = _apply_mad_filter(mt,
                                metric_key='dp_stats_mean',
                                hail_expr=mt.sample_qc.dp_stats.mean,
@@ -578,7 +581,7 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename):
                                summary=summary,
                                thresholds=thresholds)
     else:
-        logging.warning("DP information not available - DP filtering not performed")
+        logging.warning("DP information not available - DP filtering not performed")"""
 
     # Ti/Tv ratio filtering
     if "r_ti_tv" in mt.sample_qc:
@@ -593,7 +596,7 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename):
         logging.warning("Ti/Tv information not available - Ti/Tv filtering not performed")
 
     # Call rate filtering
-    if "call_rate" in mt.sample_qc:
+    """if "call_rate" in mt.sample_qc:
         mt = _apply_mad_filter(mt,
                                metric_key='call_rate',
                                hail_expr=mt.sample_qc.call_rate,
@@ -626,7 +629,7 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename):
                                summary=summary,
                                thresholds=thresholds)
     else:
-        logging.warning("CHARR not available - CHARR filtering not performed")
+        logging.warning("CHARR not available - CHARR filtering not performed")"""
 
     # Het/Hom ratio filtering
     if "r_het_hom_var" in mt.sample_qc:

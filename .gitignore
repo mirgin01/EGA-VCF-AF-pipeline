@@ -4,4 +4,11 @@ __pycache__
 .*
 hail-*
 WorkflowStats*
+GCAT*
+gonl*
+*log*
+*png
+*bgz
+*gz
+*csv*
 

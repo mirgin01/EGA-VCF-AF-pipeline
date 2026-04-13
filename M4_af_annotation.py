@@ -239,24 +239,50 @@ def af_by_sex_ancestry(mt, results_sex_agg, results_ancestry_agg):
 
     return mt, AF_total, AC_total, AN_total, nhom_total, nhet_total, nhemi_total, AF_sex, AF_ancestry, AF_ancestry_sex
 
-
-
-def annotate_new_vcf(mt, AF_total, AC_total, AN_total, homozygote_count_total, heterozygous_count, hemizygotes_total, AF_sex, AF_ancestry, AF_ancestry_sex):
+def to_allele_counts(fields: dict) -> dict:
     """
-    Annotates mt with AF fields by sex and ancestry
-    :params: mt, stast about total AF and AF fields by sex and ancestry
-    :return: mt with AF fields by sex and ancestry
+    Converts nhom/nhet/nhemi genotype count fields to allele count equivalents.
+    AC_hom = 2*nhom, AC_het = nhet, AC_hemi = nhemi
     """
+    converted = {}
+    for key, val in fields.items():
+        if key.startswith("nhom_"):
+            converted[key.replace("nhom_", "AC_hom_")] = 2 * val
+        elif key.startswith("nhet_"):
+            converted[key.replace("nhet_", "AC_het_")] = val
+        elif key.startswith("nhemi_"):
+            converted[key.replace("nhemi_", "AC_hemi_")] = val
+        else:
+            converted[key] = val
+    return converted
+
+def annotate_new_vcf(mt, AF_total, AC_total, AN_total, homozygote_count_total, 
+                     heterozygous_count, hemizygotes_total, AF_sex, AF_ancestry, AF_ancestry_sex):
+
+    use_allele_counts = config.get('use_allele_counts', False)
+
+    if use_allele_counts:
+        nhom_out   = 2 * homozygote_count_total   # AC_hom
+        nhet_out   = heterozygous_count            # AC_het (nhet == AC_het)
+        nhemi_out  = hemizygotes_total             # AC_hemi
+        AF_sex           = to_allele_counts(AF_sex)
+        AF_ancestry      = to_allele_counts(AF_ancestry)
+        AF_ancestry_sex  = to_allele_counts(AF_ancestry_sex)
+        hom_key, het_key, hemi_key = "AC_hom_total_recalc", "AC_het_total_recalc", "AC_hemi_total_recalc"
+    else:
+        nhom_out, nhet_out, nhemi_out = homozygote_count_total, heterozygous_count, hemizygotes_total
+        hom_key, het_key, hemi_key = "nhom_alt_total_recalc", "nhet_total_recalc", "nhemi_total_recalc"
+
     mt_af = mt.annotate_rows(
-        info=mt.info.annotate(  # Extend the original info field
+        info=mt.info.annotate(
             AF_total_recalc=AF_total,
             AC_total_recalc=AC_total,
-            nhom_alt_total_recalc=homozygote_count_total,
-            nhet_total_recalc = heterozygous_count,
-            nhemi_total_recalc=hemizygotes_total,
-            AN_total_recalc= AN_total,
+            AN_total_recalc=AN_total,
+            **{hom_key: nhom_out},
+            **{het_key: nhet_out},
+            **{hemi_key: nhemi_out},
             **AF_sex,
-            **AF_ancestry, 
+            **AF_ancestry,
             **AF_ancestry_sex
         )
     )
