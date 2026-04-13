@@ -318,25 +318,24 @@ def variant_filtering(mt):
         logging.warning("FS threshold not set - FS filtering not performed ")
 
     if config['variant_filters']['READPOSRANKSUM_threshold'] is not None:
+        
+        filter_expr = (hl.is_missing(mt.info.ReadPosRankSum)) | (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
+
+        logging.info(mt.info.ReadPosRankSum.dtype)
+        logging.info(mt.info.describe())
+
         if "ReadPosRankSum" in mt.info:
-            threshold = config['variant_filters']['READPOSRANKSUM_threshold']
-
-            # Variants to REMOVE: value is present AND below threshold
-            failing_expr = hl.is_defined(mt.info.ReadPosRankSum) & \
-                        (mt.info.ReadPosRankSum < threshold)
-            # Variants to KEEP: missing OR above threshold
-            filter_expr = ~failing_expr
-
             if config['verbosity']:
                 stats = create_stats(mt, "info.ReadPosRankSum", "rows")
-                summary = verbosity_counts_variants(
-                    mt, "ReadPosRankSum",
-                    failing_expr,   # <-- pass the failing expression, not the keep expression
-                    summary, stats
-                )
+                summary = verbosity_counts_variants(mt, "ReadPosRankSum", mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'], summary, stats)
+            
+            mt = mt.filter_rows(filter_expr)
 
-        mt = mt.filter_rows(filter_expr)
-        logging.info("ReadPosRankSum filtering done")
+            logging.info("ReadPosRankSum filtering done")
+        else:
+            logging.error("ReadPosRankSum information not available - terminating pipeline")
+            summary.append(["ReadPosRankSum", "-", "-", "-", "Not available"])
+            raise ValueError("ReadPosRankSum information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
     
     else: 
         logging.warning("READPOSRANKSUM threshold not set - READPOSRANKSUM filtering not performed ")
