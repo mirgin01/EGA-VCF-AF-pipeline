@@ -318,6 +318,30 @@ def variant_filtering(mt):
         logging.warning("FS threshold not set - FS filtering not performed ")
 
     if config['variant_filters']['READPOSRANKSUM_threshold'] is not None:
+
+        # Check if they're nan
+        n_nan = mt.aggregate_rows(hl.agg.count_where(hl.is_nan(mt.info.ReadPosRankSum)))
+        logging.info(f"NaN count: {n_nan}")
+
+        # Check if they're missing
+        n_missing = mt.aggregate_rows(hl.agg.count_where(hl.is_missing(mt.info.ReadPosRankSum)))
+        logging.info(f"Missing count: {n_missing}")
+
+        # Check what the filter_expr actually evaluates to
+        n_kept_by_missing_guard = mt.aggregate_rows(hl.agg.count_where(hl.is_nan(mt.info.ReadPosRankSum) | hl.is_missing(mt.info.ReadPosRankSum)))
+        logging.info(f"Kept by nan/missing guard: {n_kept_by_missing_guard}")
+
+        # Check what the full filter_expr evaluates to
+        n_passing = mt.aggregate_rows(hl.agg.count_where(
+            hl.is_nan(mt.info.ReadPosRankSum) | 
+            hl.is_missing(mt.info.ReadPosRankSum) | 
+            (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
+        ))
+        logging.info(f"Variants passing full filter_expr: {n_passing}")
+
+        # And total rows
+        n_total = mt.count_rows()
+        logging.info(f"Total rows: {n_total}")
         
         filter_expr = (hl.is_missing(mt.info.ReadPosRankSum)) | (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
 
