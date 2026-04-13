@@ -63,6 +63,10 @@ summary_VCF: false
 # If true, the output VCF will contain only variant-level information
 # (no sample columns or genotype data).
 
+use_allele_counts: true
+# If true, the final VCF will include AC_hom, AC_het, and AC_hemi fields instead of genotye counts.
+# AC_hom = 2*nhomalt, AC_het = nhet, AC_hemi = nhemi.
+
 
 ## ============================================================
 ## 3. MAIN MODULES TO RUN

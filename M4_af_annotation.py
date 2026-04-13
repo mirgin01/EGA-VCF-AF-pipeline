@@ -259,9 +259,7 @@ def to_allele_counts(fields: dict) -> dict:
 def annotate_new_vcf(mt, AF_total, AC_total, AN_total, homozygote_count_total, 
                      heterozygous_count, hemizygotes_total, AF_sex, AF_ancestry, AF_ancestry_sex):
 
-    use_allele_counts = config.get('use_allele_counts', False)
-
-    if use_allele_counts:
+    if config['use_allele_counts']:
         nhom_out   = 2 * homozygote_count_total   # AC_hom
         nhet_out   = heterozygous_count            # AC_het (nhet == AC_het)
         nhemi_out  = hemizygotes_total             # AC_hemi
