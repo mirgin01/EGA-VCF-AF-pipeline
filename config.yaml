@@ -99,7 +99,7 @@ submit_ancestry: false
 ancestry_information: "gcat-submitted-metadata.csv"
 # CSV with known ancestry labels.
 # Only used when submit_ancestry = true.
-# Required columns (tab-separated header): SampleID,Population
+# Required columns (comma-separated header): SampleID,Population
 
 af_annotation: false
 # Recalculate allele frequencies and annotate the final VCF.

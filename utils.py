@@ -595,22 +595,18 @@ def create_stats(mt, field_path, aggregate):
     except Exception as e:
         logging.error(f"Error calculating statistics for {field_path}: {e}")
         return None
-           
-def verbosity_counts_variants(mt, filter_name, filter_step, summary, stats):
-    """
-    Calculates the number of variants deleted per qc step
-    :params: mt without QC, filter name, filter command, CSV summary, basic stats to add them to CSV summary
-    :return: counts about removed variants and appropiate logs.
-    """
-    repo_stats = mt.aggregate_rows(hl.struct(
-        total = hl.agg.count(),
-        passing=hl.agg.count_where(filter_step)
-        )
-    )   
-    logging.info(f"{filter_name} filtering done - Variants removed: {repo_stats.total - repo_stats.passing}  ")
-    summary.append([filter_name, repo_stats.total, repo_stats.total - (repo_stats.total-repo_stats.passing), repo_stats.total-repo_stats.passing, stats])
 
-    return summary 
+def verbosity_counts_variants(mt, filter_name, filter_step, summary, stats):
+    # filter_step is the REMOVAL condition, so survivors are where it's False or missing
+    keep_expr = hl.is_missing(filter_step) | ~filter_step
+    
+    repo_stats = mt.aggregate_rows(hl.struct(
+        total=hl.agg.count(),
+        passing=hl.agg.count_where(hl.or_else(keep_expr, True))
+    ))
+    logging.info(f"{filter_name} filtering done - Variants removed: {repo_stats.total - repo_stats.passing}")
+    summary.append([filter_name, repo_stats.total, repo_stats.passing, repo_stats.total - repo_stats.passing, stats])
+    return summary
 
 def run_charr(mt, reference):
     if "AF" in mt.info:
@@ -1056,5 +1052,44 @@ def create_distribution_plots_points(mt, sequencingType, basename):
 
     return sample_ids
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def plot_sample_qc_histograms(collected, thresholds, sequencingType, basename):
+    """
+    Plot histograms of sample QC metrics with MAD-based thresholds overlaid.
+    
+    :param collected: dict of sample metrics, e.g. collected['dp_stats_mean'] = list of values
+    :param thresholds: dict of MAD thresholds, e.g. thresholds['dp_stats_mean'] = (lower, upper)
+    :param sequencingType: 'WES' or 'WGS' (used for plot titles)
+    :param basename: string used for filenames
+    """
+    sns.set(style="whitegrid")
+    
+    for metric, values in collected.items():
+        plt.figure(figsize=(8, 5))
+        sns.histplot(values, bins=40, kde=False, color='skyblue')
+        
+        # Add thresholds if available
+        thresh = thresholds.get(metric, None)
+        if thresh is not None:
+            if isinstance(thresh, tuple):
+                lower, upper = thresh
+                if lower is not None:
+                    plt.axvline(lower, color='red', linestyle='--', label=f'Lower threshold: {lower:.2f}')
+                if upper is not None:
+                    plt.axvline(upper, color='green', linestyle='--', label=f'Upper threshold: {upper:.2f}')
+            else:  # single-sided threshold
+                plt.axvline(thresh, color='red', linestyle='--', label=f'Threshold: {thresh:.2f}')
+        
+        plt.title(f'{metric} distribution — {sequencingType} samples')
+        plt.xlabel(metric)
+        plt.ylabel('Number of samples')
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f'{basename}_{metric}_histogram.png', dpi=150)
+        plt.close()
+
+        
 """mt = hl.read_matrix_table(config['mt_from_vcf'])
 create_stats_samples(mt, mt.sample_qc.dp_stats)"""

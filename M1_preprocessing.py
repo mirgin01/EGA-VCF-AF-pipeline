@@ -232,13 +232,10 @@ def variant_filtering(mt):
             
             if config['verbosity']:
                 stats = create_stats(mt, "info.QD", "rows")            
-                summary = verbosity_counts_variants(mt, "QD", 
-                hl.is_defined(mt.info.QD) & (mt.info.QD < config['variant_filters']['QD_threshold']), 
-                summary, stats)
+                summary = verbosity_counts_variants(mt, "QD", mt.info.QD >= config['variant_filters']['QD_threshold'], summary, stats)                      
 
             # actually apply the filter to the mt
-            mt = mt.filter_rows(hl.is_missing(mt.info.QD) | (mt.info.QD >= config['variant_filters']['QD_threshold']))
-
+            mt = mt.filter_rows(mt.info.QD >= config['variant_filters']['QD_threshold'])
             logging.info("QD filtering done")
         
         else:
@@ -280,8 +277,7 @@ def variant_filtering(mt):
                 summary = verbosity_counts_variants(mt, "QUAL", mt.qual >= config['variant_filters']['QUAL_threshold'], summary, stats)
             
             
-            mt = mt.filter_rows(hl.is_missing(mt.qual) | (mt.qual >= config['variant_filters']['QUAL_threshold']))
-
+            mt = mt.filter_rows(mt.qual >= config['variant_filters']['QUAL_threshold'])
             logging.info("QUAL filtering done")
         
         except TypeError:
@@ -295,11 +291,9 @@ def variant_filtering(mt):
         if "MQ" in mt.info:
             if config['verbosity']:
                 stats = create_stats(mt, "info.MQ", "rows")
-                summary = verbosity_counts_variants(mt, "MQ",
-                hl.is_defined(mt.info.MQ) & (mt.info.MQ < config['variant_filters']['MQ_threshold']),
-                summary, stats)
-            mt = mt.filter_rows(hl.is_missing(mt.info.MQ) | (mt.info.MQ >= config['variant_filters']['MQ_threshold']))
-
+                summary = verbosity_counts_variants(mt, "MQ", mt.info.MQ >= config['variant_filters']['MQ_threshold'], summary, stats)
+               
+            mt = mt.filter_rows(mt.info.MQ >= config['variant_filters']['MQ_threshold'])
             logging.info("MQ filtering done")
         else:
             logging.error("MQ information not available - terminating pipeline")
@@ -312,12 +306,9 @@ def variant_filtering(mt):
         if "FS" in mt.info:
             if config['verbosity']:
                 stats = create_stats(mt, "info.FS", "rows")
-                summary = verbosity_counts_variants(mt, "FS",
-                hl.is_defined(mt.info.FS) & (mt.info.FS > config['variant_filters']['FS_threshold']),
-                summary, stats)
-                
-            mt = mt.filter_rows(hl.is_missing(mt.info.FS) | (mt.info.FS <= config['variant_filters']['FS_threshold']))
+                summary = verbosity_counts_variants(mt, "FS", mt.info.FS <= config['variant_filters']['FS_threshold'], summary, stats)
 
+            mt = mt.filter_rows(mt.info.FS <= config['variant_filters']['FS_threshold'])
             logging.info("FS filtering done")
         else:
             logging.error("FS information not available - terminating pipeline")
@@ -325,19 +316,28 @@ def variant_filtering(mt):
             raise ValueError("FS information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
     else: 
         logging.warning("FS threshold not set - FS filtering not performed ")
+    
+    # Add this right before the filter_rows call in ReadPosRankSum block
+    n_before = mt.count_rows()
+    n_would_keep = mt.aggregate_rows(hl.agg.count_where(
+        hl.is_missing(mt.info.ReadPosRankSum) | 
+        (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
+    ))
+    logging.info(f"Rows before ReadPosRankSum filter: {n_before}")
+    logging.info(f"Rows filter_expr would keep: {n_would_keep}")
 
     if config['variant_filters']['READPOSRANKSUM_threshold'] is not None:
-
-        logging.info(mt.info.ReadPosRankSum.dtype)
-        logging.info(mt.info.describe())
-
         if "ReadPosRankSum" in mt.info:
             if config['verbosity']:
                 stats = create_stats(mt, "info.ReadPosRankSum", "rows")
-                summary = verbosity_counts_variants(mt, "ReadPosRankSum", mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'], summary, stats)
-            
-            mt = mt.filter_rows(hl.is_missing(mt.info.ReadPosRankSum) | (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold']))
+                summary = verbosity_counts_variants(mt, "ReadPosRankSum",
+                            hl.is_defined(mt.info.ReadPosRankSum) & (mt.info.ReadPosRankSum < config['variant_filters']['READPOSRANKSUM_threshold']),
+                            summary, stats)
 
+            mt = mt.filter_rows(
+                hl.is_missing(mt.info.ReadPosRankSum) | 
+                (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
+            )
             logging.info("ReadPosRankSum filtering done")
         else:
             logging.error("ReadPosRankSum information not available - terminating pipeline")
@@ -351,7 +351,6 @@ def variant_filtering(mt):
 
 
     return mt
-
 
 def sample_filtering_hard_thresholds(mt, sequencingType, basename): 
     """
@@ -375,7 +374,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
         summary.append(["Filter", "Before", "After", "Removed", "Stats"])
 
     # Compute CHARR
-    try:
+    try: # TODO improve the NaN handle. When CHARR is NaN, the sample is filtered out but it breaks the stats report. eg in iberian-roman dataset 
         if config['ref_gen'] == "GRCh37": 
             if not config.get('gnomad_sites_GRCh37') or config['gnomad_sites_GRCh37'].strip() == '':
                 logging.error("gnomAD sites GRCh37 path is empty or not configured - check your conf.py")
@@ -394,6 +393,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
         summary.append("CHARR couldn't be calculated.", e)
         raise ValueError("CHARR information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
     
+
     config['verbosity'] = True
 
     if config["plots"]:
@@ -513,8 +513,10 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
     
     return mt
 
+# TODO fix the fact that when CHARR is NaN the sample is filtered out but it breaks the stats report. eg in iberian-roman dataset. Maybe add a specific message in the log to say that those samples are being filtered out because of CHARR NaN values, but they can't be included in the stats report because of the NaN values?
+# TODO fix the CSV output. Include the number of samples filtered by MAD    
 
-def sample_filtering_mad_thresholds(mt, sequencingType, basename):
+def sample_filtering_mad_thresholds(mt, sequencingType, basename): # TODO Clean this function  # TODO merge when possible with hard thresholds # TODO make alle the plots in one go, adding both hard and mad thresholds 
     """
     Applies sample quality control using MAD-based thresholds following the gnomAD strategy.
     Thresholds are computed from the full dataset before any filtering is applied.
@@ -578,6 +580,8 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename):
         'charr':         _safe_mad_threshold(collected, 'charr',         k=4.0, one_sided='upper'),
         'r_het_hom_var': _safe_mad_threshold(collected, 'r_het_hom_var', k=4.0, one_sided=None),
     }
+    
+    
 
     # ── apply filters ─────────────────────────────────────────────────────────
 

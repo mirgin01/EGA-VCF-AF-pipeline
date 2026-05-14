@@ -55,92 +55,137 @@ def subset_100000(mt, n_var):
     
     return mt_filtered
 
+def get_relatedness_output_path():
+    basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))
+    return f"./{basename}_related_samples_deleted.txt"
+
+
+def initialize_relatedness_report():
+    """
+    Create the report file with a clean header.
+    """
+    out_file = get_relatedness_output_path()
+    with open(out_file, "w") as f:
+        f.write("sampleId_1\tsampleId_2\tscore\tmethod\n")
+    return out_file
 
 def find_high_kin_score(mt):
     """
-    Find the samples which relatedness score is > 0.45 The purge of highly related samples is calculated using king algorithm.  
-    :params: subset of 100.000 variants with relatedness qc
-    :return: list of higly related samples to delete 
+    Find samples with KING phi > 0.45 (duplicates / twins / near-identical samples).
+    Returns a Hail table with one row per pair.
     """
+    logging.info("Running KING")
+    king_ht = hl.king(mt.GT)
 
-    king_ht = hl.king(mt.GT)  # KING operates on the genotype data (afterQC_vcfmatrix.GT)
+    # Keep only very high kinship pairs
+    high_kinship = king_ht.filter(king_ht.phi > 0.45)
 
-    high_kinship_score = king_ht.filter_entries(king_ht['phi'] > 0.45) # get the pairs of higly releated samples (auto-comparison of samples and twins)
+    # Convert to row table
+    high_kinship_table = high_kinship.entries()
 
-    high_kinship_score_table = high_kinship_score.entries()
+    # Remove self-comparisons
+    high_kinship_table = high_kinship_table.filter(high_kinship_table.s_1 != high_kinship_table.s)
 
-    twins_table = high_kinship_score_table.filter(high_kinship_score_table['s_1'] != high_kinship_score_table['s']) # delete the auto-comparion of samples (phi score of 0.5)
+    # Remove duplicated symmetric pairs (A-B and B-A), keep only one
+    high_kinship_table = high_kinship_table.filter(high_kinship_table.s_1 < high_kinship_table.s)
 
-    basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))
-    twins_table.export(f"./{basename}_related_samples_deleted.txt") 
-    
-    logging.info(f"High kinship samples deleted by King saved in: ./{os.path.splitext(os.path.basename(config['mt_from_vcf']))[0]}_related_samples_deleted")
+    return high_kinship_table
 
-    return twins_table
+def append_king_results_to_file(twins_table):
+    """
+    Append KING results to the report file with method column.
+    """
+    out_file = get_relatedness_output_path()
+
+    rows = twins_table.collect()
+    with open(out_file, "a") as f:
+        for row in rows:
+            f.write(f"{row.s_1}\t{row.s}\t{row.phi}\tKING\n")
+
+    logging.info(f"KING-related samples saved in: {out_file}")
 
 def delete_related_indv(mt, mt_filtered):
     """
-    Find the samples which relatedness score is > 0.1 . Estimation done by PCA  
+    Find the samples which relatedness score is > 0.1 (up to about 2nd-degree relatedness). Estimation done by PCA  
     :params: subset of 100.000 variants with relatedness qc
     :return: mt (with all the original variants without relatedness qc) with maximal independent set of related samples
     """
    
-    #Less principal components (k) -- less memory
-    #block_size parameter in hl.pc_relate determines how many samples are processed at a time. By reducing this value, you can lower memory usage at the expense of computational time.
-    
     logging.info("hwe_normalized_pca running with subset QC relatedness matrix")
-    pca_eigenvalues, pca_scores, pca_loadings = hl.hwe_normalized_pca(mt_filtered.GT, k=5, compute_loadings=False)  # Compute PCA
+    pca_eigenvalues, pca_scores, _ = hl.hwe_normalized_pca(
+        mt_filtered.GT,
+        k=5,
+        compute_loadings=False
+    )
 
     logging.info("pc_relate running with subset QC relatedness matrix")
+    relatedness_ht = hl.pc_relate(
+        mt_filtered.GT,
+        min_individual_maf=0.01,
+        scores_expr=pca_scores[mt_filtered.col_key].scores,
+        block_size=1000,
+        min_kinship=0.1,
+        statistics='all'
+    )
 
-    relatedness_ht = hl.pc_relate(mt_filtered.GT, min_individual_maf=0.01, scores_expr=pca_scores[mt_filtered.col_key].scores,
-                                block_size=1000, min_kinship=0.1, statistics='all')  # Compute relatedness
+    pairs = relatedness_ht.filter(relatedness_ht.kin > 0.1)
 
-    pairs = relatedness_ht.filter(relatedness_ht['kin'] > 0.1) # Filter pairs based on kinship threshold
+    # maximal independent set of samples to remove
+    related_samples_to_remove = hl.maximal_independent_set(pairs.i, pairs.j, False)
 
-    related_samples_to_remove = hl.maximal_independent_set(pairs.i, pairs.j, False) # Get the maximal independent set of related samples to remove
+    # collect before filtering the MT
+    samples_to_remove = related_samples_to_remove.collect()
 
-    samples_to_remove = related_samples_to_remove.collect() 
-
-    basename = os.path.basename(config['mt_from_vcf'].rstrip('/'))
-    with open(f"./{basename}_related_samples_deleted.txt", "a") as file: # Save removed sample ID into a file
+    out_file = get_relatedness_output_path()
+    with open(out_file, "a") as f:
         for sample in samples_to_remove:
-            file.write(f"{sample['node']}\n")
+            # sample['node'] is a struct like Struct(s='100c')
+            sample_id = sample.node.s
+            f.write(f"{sample_id}\t-\t-\tPC_relate\n")
 
-    mt = mt.filter_cols(hl.is_defined(related_samples_to_remove[mt.col_key]), keep=False) # Remove related samples from the matrix table
-    
-    return mt 
+    logging.info(f"PC-relate-related samples saved in: {out_file}")
+
+    mt = mt.filter_cols(hl.is_defined(related_samples_to_remove[mt.col_key]), keep=False)
+
+    return mt
 
 def delete_related_samples(mt):
     """
-    Calls all the relatedness module function. Deletes the samples inferred by King. 
-    :params: mt with related samples
-    :return: mt without related samples
+    Calls all relatedness functions.
+    Deletes:
+      - KING high-kinship samples (duplicates/twins)
+      - PC-relate inferred related samples
     """
-   
-    mt_qual, n_var = quality_control(mt)
+    initialize_relatedness_report()
 
+    mt_qual, n_var = quality_control(mt)
     mt_filtered = subset_100000(mt_qual, n_var[0])
-    
+
     twins_table = find_high_kin_score(mt_filtered)
+    append_king_results_to_file(twins_table)
 
     mt = delete_related_indv(mt, mt_filtered)
 
     if twins_table.count() != 0:
-        samples_to_remove = twins_table.aggregate(hl.agg.collect_as_set(twins_table.s)) # Remove the high kinship score samples
+        # remove one side of each KING pair; currently removes the second sample in each kept pair
+        samples_to_remove = twins_table.aggregate(hl.agg.collect_as_set(twins_table.s))
         set_to_remove = hl.literal(samples_to_remove)
-        mt = mt.filter_cols(~set_to_remove.contains(mt['s']))
+        mt = mt.filter_cols(~set_to_remove.contains(mt.s))
 
-    after_rel_trim = mt.count() 
+    after_rel_trim = mt.count()
 
-    logging.info(f"Dataset size after relatedness trimming. Variants: {after_rel_trim[0]}, Samples: {after_rel_trim[1]}   ")
+    logging.info(
+        f"Dataset size after relatedness trimming. "
+        f"Variants: {after_rel_trim[0]}, Samples: {after_rel_trim[1]}"
+    )
+
     if config['verbosity']:
-            summary = []
-            summary.append(["Dataset size after relatedness trimming", after_rel_trim[0], after_rel_trim[1]])
-            csv_writer(summary)
+        summary = []
+        summary.append(["Dataset size after relatedness trimming", after_rel_trim[0], after_rel_trim[1]])
+        csv_writer(summary)
 
-    return mt 
-    
+    return mt
+
 
 """mt = hl.read_matrix_table(config['mt_from_vcf'])
 delete_related_samples(mt)"""
