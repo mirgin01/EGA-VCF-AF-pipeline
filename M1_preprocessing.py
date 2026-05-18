@@ -28,12 +28,12 @@ def convert_and_merge_vcfs(vcf_dir, mt_from_vcf, reference_genome):
 
     if len(vcfs) == 1:
         logging.info(f"Converting: {vcfs[0]}")
-        mt = hl.import_vcf(vcfs[0], reference_genome=reference_genome, min_partitions=4)
+        mt = hl.import_vcf(vcfs[0], reference_genome=reference_genome, min_partitions=4, array_elements_required=False) #allow missing values in FORMAT columns
 
     else:
         # Load the first VCF as the initial MatrixTable
         logging.info(f"Converting: {vcfs}")
-        mt = hl.import_vcf(f"{config['vcf_dir']}/*.vcf*", reference_genome=reference_genome, min_partitions=4)
+        mt = hl.import_vcf(f"{config['vcf_dir']}/*.vcf*", reference_genome=reference_genome, min_partitions=4, array_elements_required=False)
         
     mt.write(mt_from_vcf, overwrite=True)
     
@@ -317,15 +317,6 @@ def variant_filtering(mt):
     else: 
         logging.warning("FS threshold not set - FS filtering not performed ")
     
-    # Add this right before the filter_rows call in ReadPosRankSum block
-    n_before = mt.count_rows()
-    n_would_keep = mt.aggregate_rows(hl.agg.count_where(
-        hl.is_missing(mt.info.ReadPosRankSum) | 
-        (mt.info.ReadPosRankSum >= config['variant_filters']['READPOSRANKSUM_threshold'])
-    ))
-    logging.info(f"Rows before ReadPosRankSum filter: {n_before}")
-    logging.info(f"Rows filter_expr would keep: {n_would_keep}")
-
     if config['variant_filters']['READPOSRANKSUM_threshold'] is not None:
         if "ReadPosRankSum" in mt.info:
             if config['verbosity']:

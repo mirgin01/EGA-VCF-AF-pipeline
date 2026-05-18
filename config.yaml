@@ -156,7 +156,7 @@ variant_filters:
   FS_threshold: 60
   # Fisher Strand bias. High values suggest strand-specific artifacts.
 
-  READPOSRANKSUM_threshold: -8.0
+  READPOSRANKSUM_threshold: #-8.0
   # Filters variants where alt alleles cluster near read ends.
 
 
