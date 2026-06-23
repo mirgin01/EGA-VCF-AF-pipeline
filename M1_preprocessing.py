@@ -128,6 +128,7 @@ def genotype_filtering(mt):
             mt = mt.annotate_entries(
                 GT = hl.if_else(mt.GQ >= config['genotype_filters']['GQ_threshold'], mt.GT, hl.null(mt.GT.dtype))
                 ) # set non passing GT to NULL 
+            logging.info("GQ filtering done")
 
         else:
             logging.error("GQ information not available - terminating pipeline")
@@ -177,6 +178,7 @@ def genotype_filtering(mt):
                 .when(mt.GT.is_het() & (mt.AB < config['genotype_filters']['AB_threshold']), hl.null(mt.GT.dtype)) # filter ONLY het genotypes by AB
                 .default(mt.GT)
             )
+            logging.info("AB filtering done")
             
             if config['verbosity']:
                 # Count genotypes after AB filtering
@@ -193,7 +195,7 @@ def genotype_filtering(mt):
                 logging.info(f"Total genotypes with GT and AD: {pre_ab_stats.defined_GT_AD} ")
                 logging.info(f"General AB statistics: {pre_ab_stats.basic_stats   }")
                 logging.info(f"Allele Balance filtering done - Genotypes removed: {genotypes_removed_ab}    ")
-                
+                 
                 summary.append(["AlleleBalance", pre_ab_stats.defined_GT, post_ab_stats.defined_GT, genotypes_removed_ab, clean_stats])
         else:
             logging.error("Allele Balance information not available - terminating pipeline")
@@ -385,8 +387,6 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
         raise ValueError("CHARR information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
     
 
-    config['verbosity'] = True
-
     if config["plots"]:
         logging.info("Creating Sample Filters plots")
         create_distribution_plots(mt, sequencingType, basename)
@@ -397,7 +397,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
         if "dp_stats" in mt.sample_qc:
             # get correct threshold 
             min_coverage = config['sample_filters']['DP_STATS.MEAN_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['DP_STATS.MEAN_WGS_threshold']
-            mt = _apply_filter(mt,
+            mt = apply_filter(mt,
                                 condition=mt.sample_qc.dp_stats.mean >= min_coverage,
                                 metric_path="sample_qc.dp_stats.mean",
                                 metric_name="Minimum Coverage",
@@ -417,7 +417,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
         lower, upper = config['sample_filters']['R_TI_TV_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['R_TI_TV_WGS_threshold']
         
         if "r_ti_tv" in mt.sample_qc:
-            mt = _apply_filter(mt,
+            mt = apply_filter(mt,
                 condition=(mt.sample_qc.r_ti_tv >= lower) & (mt.sample_qc.r_ti_tv <= upper),
                 metric_path="sample_qc.r_ti_tv",
                 metric_name="Ti/Tv ratio",
@@ -432,7 +432,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
     # Call rate filtering
     if config['sample_filters']['CALL_RATE_threshold'] is not None: 
         if "call_rate" in mt.sample_qc:
-           mt = _apply_filter(mt,
+           mt = apply_filter(mt,
                             condition=mt.sample_qc.call_rate >= config['sample_filters']['CALL_RATE_threshold'],
                             metric_path="sample_qc.call_rate",
                             metric_name="Call Rate",
@@ -451,7 +451,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
     if config['sample_filters']['N_SINGLETON_WES_threshold'] is not None or config['sample_filters']['N_SINGLETON_WGS_threshold'] is not None:
         if "n_singleton" in mt.sample_qc: 
             hard_cutoff = config['sample_filters']['N_SINGLETON_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['N_SINGLETON_WGS_threshold']
-            mt = _apply_filter(mt,
+            mt = apply_filter(mt,
                                 condition=mt.sample_qc.n_singleton <= hard_cutoff,
                                 metric_path="sample_qc.n_singleton",
                                 metric_name="Singletons",
@@ -468,7 +468,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
     
     if config['sample_filters']['CHARR_threshold'] is not None:
         try:
-            mt = _apply_filter(mt,
+            mt = apply_filter(mt,
                                 condition=mt.charr <= config['sample_filters']['CHARR_threshold'],
                                 metric_path="charr",
                                 metric_name="CHARR",
@@ -487,7 +487,7 @@ def sample_filtering_hard_thresholds(mt, sequencingType, basename):
         if "r_het_hom_var" in mt.sample_qc:
             hard_cutoff = config['sample_filters']['R_HET_HOM_VAR_WES_threshold'] if sequencingType == "WES" else config['sample_filters']['R_HET_HOM_VAR_WGS_threshold']
             
-            mt = _apply_filter(mt,
+            mt = apply_filter(mt,
                                 condition=mt.sample_qc.r_het_hom_var <= hard_cutoff,
                                 metric_path="sample_qc.r_het_hom_var",
                                 metric_name="Het/Hom ratio",
@@ -527,33 +527,8 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename): # TODO Clean 
         summary.append(["Sample Filtering Steps — MAD-based thresholds"])
         summary.append(["Filter", "Before", "After", "Removed", "Stats"])
 
-    # Compute CHARR
-    """try:
-        if config['ref_gen'] == "GRCh37":
-            if not config.get('gnomad_sites_GRCh37') or config['gnomad_sites_GRCh37'].strip() == '':
-                logging.error("gnomAD sites GRCh37 path is empty or not configured - check your conf.py")
-            else:
-                mt = run_charr(mt, config['gnomad_sites_GRCh37'])
-        elif config['ref_gen'] == "GRCh38":
-            if not config.get('gnomad_sites_GRCh38') or config['gnomad_sites_GRCh38'].strip() == '':
-                logging.error("gnomAD sites GRCh38 path is empty or not configured - check your conf.py")
-            else:
-                mt = run_charr(mt, config['gnomad_sites_GRCh38'])
-        else:
-            logging.error("The value inserted as ref_gen is not valid. Please, choose between GRCh37 and GRCh38")
-    except (TypeError, LookupError, ValueError) as e:
-        logging.error(f"CHARR couldn't be calculated: {e}")
-        if config['verbosity']:
-            summary.append(["CHARR", "-", "-", "-", "Not available"])
-        raise ValueError("CHARR information is not available. To proceed with filtering, add a hash sign to the threshold value to inactivate the metric and perform quality control without this step.")
-    """
 
-    # ── collect all metrics in one Hail action ────────────────────────────────
-    # must happen after sample_qc and charr, before any filtering
-    # so all thresholds reflect the full dataset
-    logging.info("start collecting metrics")
-
-    collected = _collect_metrics(mt)
+    collected = collect_metrics(mt)
     
     logging.info("finished collecting metrics", collected)
 
@@ -562,35 +537,16 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename): # TODO Clean 
         sample_ids = create_distribution_plots(mt, sequencingType, basename)
         #create_outlier_plots(mt, z_thresh=3.0, name_prefix=get_name(),collected=collected, sample_ids=sample_ids)
 
-    # ── compute all MAD thresholds upfront ────────────────────────────────────
+    # Compute all MAD thresholds upfront
     thresholds = {
-        'dp_stats_mean': _safe_mad_threshold(collected, 'dp_stats_mean', k=4.0, one_sided='lower'),
-        'r_ti_tv':       _safe_mad_threshold(collected, 'r_ti_tv',       k=4.0, one_sided='lower'),
-        'call_rate':     _safe_mad_threshold(collected, 'call_rate',     k=4.0, one_sided='lower'),
-        'n_singleton':   _safe_mad_threshold(collected, 'n_singleton',   k=4.0, one_sided='upper'),
-        'charr':         _safe_mad_threshold(collected, 'charr',         k=4.0, one_sided='upper'),
-        'r_het_hom_var': _safe_mad_threshold(collected, 'r_het_hom_var', k=4.0, one_sided=None),
+        'r_ti_tv':       safe_mad_threshold(collected, 'r_ti_tv',       k=4.0, one_sided='lower'),
+        'r_het_hom_var': safe_mad_threshold(collected, 'r_het_hom_var', k=4.0, one_sided=None)
     }
     
     
-
-    # ── apply filters ─────────────────────────────────────────────────────────
-
-    # Minimum coverage filtering
-    """if "dp_stats" in mt.sample_qc:
-        mt = _apply_mad_filter(mt,
-                               metric_key='dp_stats_mean',
-                               hail_expr=mt.sample_qc.dp_stats.mean,
-                               metric_path="sample_qc.dp_stats.mean",
-                               metric_name="Minimum Coverage",
-                               summary=summary,
-                               thresholds=thresholds)
-    else:
-        logging.warning("DP information not available - DP filtering not performed")"""
-
     # Ti/Tv ratio filtering
     if "r_ti_tv" in mt.sample_qc:
-        mt = _apply_mad_filter(mt,
+        mt = apply_mad_filter(mt,
                                metric_key='r_ti_tv',
                                hail_expr=mt.sample_qc.r_ti_tv,
                                metric_path="sample_qc.r_ti_tv",
@@ -600,45 +556,10 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename): # TODO Clean 
     else:
         logging.warning("Ti/Tv information not available - Ti/Tv filtering not performed")
 
-    # Call rate filtering
-    """if "call_rate" in mt.sample_qc:
-        mt = _apply_mad_filter(mt,
-                               metric_key='call_rate',
-                               hail_expr=mt.sample_qc.call_rate,
-                               metric_path="sample_qc.call_rate",
-                               metric_name="Call Rate",
-                               summary=summary,
-                               thresholds=thresholds)
-    else:
-        logging.warning("Call rate information not available - Call rate filtering not performed")
-
-    # Singletons filtering
-    if "n_singleton" in mt.sample_qc:
-        mt = _apply_mad_filter(mt,
-                               metric_key='n_singleton',
-                               hail_expr=mt.sample_qc.n_singleton,
-                               metric_path="sample_qc.n_singleton",
-                               metric_name="Singletons",
-                               summary=summary,
-                               thresholds=thresholds)
-    else:
-        logging.warning("Singletons information not available - Singletons filtering not performed")
-
-    # CHARR filtering
-    if 'charr' in mt.col:
-        mt = _apply_mad_filter(mt,
-                               metric_key='charr',
-                               hail_expr=mt.charr,
-                               metric_path="charr",
-                               metric_name="CHARR",
-                               summary=summary,
-                               thresholds=thresholds)
-    else:
-        logging.warning("CHARR not available - CHARR filtering not performed")"""
 
     # Het/Hom ratio filtering
     if "r_het_hom_var" in mt.sample_qc:
-        mt = _apply_mad_filter(mt,
+        mt = apply_mad_filter(mt,
                                metric_key='r_het_hom_var',
                                hail_expr=mt.sample_qc.r_het_hom_var,
                                metric_path="sample_qc.r_het_hom_var",
@@ -654,133 +575,5 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename): # TODO Clean 
     return mt
 
 
-def _apply_filter(mt, condition, metric_path, metric_name, summary):
-    """
-    Applies a single sample QC filter step.
-    :param mt: MatrixTable to filter
-    :param condition: Hail boolean expression for filtering
-    :param metric_path: string path to metric for create_stats e.g. "sample_qc.call_rate"
-    :param metric_name: display name for logging and summary e.g. "Call Rate"
-    :param summary: summary list to append results to
-    :return: filtered MatrixTable
-    """
-    repo_stats = mt.aggregate_cols(hl.struct(
-        total=hl.agg.count(),
-        passing=hl.agg.count_where(condition)
-    ))
-
-    if config['verbosity']:
-        stats = create_stats(mt, metric_path, "cols")
-        summary.append([metric_name, repo_stats.total, repo_stats.passing,
-                        repo_stats.total - repo_stats.passing, stats])
-
-    logging.info(f"{metric_name} filtering done - Samples removed: {repo_stats.total - repo_stats.passing}")
-    mt = mt.filter_cols(condition)
-    return mt
 
 
-def _compute_mad_threshold(values, k=4.0, one_sided=None):
-    """
-    Computes MAD-based thresholds for a metric.
-    :param values: numpy array of metric values
-    :param k: MAD multiplier (gnomAD default = 4.0)
-    :param one_sided: None (two-sided), 'lower' (flag below only), 'upper' (flag above only)
-    :return: (lower, upper, median, mad)
-    """
-    median = float(np.median(values))
-    mad    = float(np.median(np.abs(values - median)))
-
-    # floor to avoid threshold collapse when MAD = 0
-    if mad == 0:
-        mad = 0.01 * abs(median) if median != 0 else 0.01
-
-    spread = k * mad
-    lower  = median - spread if one_sided != 'upper' else -np.inf
-    upper  = median + spread if one_sided != 'lower' else  np.inf
-
-    logging.info(f"MAD threshold | median={median:.4f}, MAD={mad:.4f}, "
-                 f"lower={lower:.4f}, upper={upper:.4f}")
-
-    return lower, upper, median, mad
-
-
-def _collect_metrics(mt):
-    """
-    Collects all QC metrics from the MatrixTable to numpy arrays in one Hail action.
-    :param mt: MatrixTable after hl.sample_qc() and run_charr()
-    :return: dictionary of {metric_name: numpy array}
-    """
-    has_charr = 'charr' in mt.col
-    extra     = ['charr'] if has_charr else []
-    rows      = mt.cols().key_by().select('s', 'sample_qc', *extra).collect()
-
-    extractors = {
-        'call_rate':     lambda r: r.sample_qc.call_rate,
-        'r_ti_tv':       lambda r: r.sample_qc.r_ti_tv,
-        'r_het_hom_var': lambda r: r.sample_qc.r_het_hom_var,
-        'n_singleton':   lambda r: r.sample_qc.n_singleton,
-        'dp_stats_mean': lambda r: r.sample_qc.dp_stats.mean,
-        'charr':         lambda r: r.charr if has_charr else None,
-    }
-
-    collected = {}
-    for key, extractor in extractors.items():
-        try:
-            vals = [float(extractor(r)) if extractor(r) is not None else np.nan for r in rows]
-            collected[key] = np.array(vals, dtype=float)
-            n_valid = int(np.sum(~np.isnan(collected[key])))
-            logging.info(f"Collected '{key}': {n_valid}/{len(rows)} valid values")
-        except Exception as e:
-            logging.warning(f"Could not collect metric '{key}': {e}")
-            collected[key] = np.full(len(rows), np.nan)
-
-    return collected
-
-def _apply_mad_filter(mt, metric_key, hail_expr, metric_path, metric_name,
-                      summary, thresholds):
-    """
-    Applies a pre-computed MAD-based filter to the MatrixTable.
-    :param mt: MatrixTable to filter
-    :param metric_key: key to look up in thresholds dict e.g. 'call_rate'
-    :param hail_expr: Hail expression for the metric e.g. mt.sample_qc.call_rate
-    :param metric_path: string path for create_stats e.g. "sample_qc.call_rate"
-    :param metric_name: display name for logging and summary
-    :param summary: summary list to append results to
-    :param thresholds: dict of pre-computed thresholds from _compute_mad_threshold
-    :return: filtered MatrixTable
-    """
-    # Avoids breaking when metric is not in matrix 
-    if thresholds[metric_key] is None:
-        logging.warning(f"{metric_name} MAD filter skipped — threshold could not be computed")
-        return mt                  # return mt unchanged
-    
-    lower, upper, median, mad = thresholds[metric_key]
-
-    condition = (hail_expr >= lower) & (hail_expr <= upper)
-
-    logging.info(f"{metric_name} MAD filter | lower={lower:.4f}, upper={upper:.4f}")
-
-    mt = _apply_filter(mt,
-                       condition=condition,
-                       metric_path=metric_path,
-                       metric_name=metric_name,
-                       summary=summary)
-    return mt
-
-
-def _safe_mad_threshold(collected, key, k=4.0, one_sided=None):
-    """
-    Wraps _compute_mad_threshold with a NaN check.
-    Returns None if the metric is unavailable, threshold tuple otherwise.
-    """
-    values = collected.get(key)
-    if values is None:
-        logging.warning(f"MAD | '{key}' not found in collected metrics — skipping")
-        return None
-    
-    valid = values[~np.isnan(values)]
-    if len(valid) < 2:
-        logging.warning(f"MAD | '{key}' has fewer than 2 valid values — skipping")
-        return None
-
-    return _compute_mad_threshold(valid, k=k, one_sided=one_sided)

@@ -9,47 +9,50 @@ config = load_config()
 
 def subset_matrix(mt):
     """
-    Finds all the ancestry informative SNPs in our matrix. Creates a subset matrix with ancestry SNPs and applies HWE QC. Export the subset matrix as a VCF 
-    :params: mt 
-    :return: VCF with ancestry informative SNPs and HWE QC done.
+    Finds all the ancestry informative SNPs in our matrix. Creates a subset matrix
+    with ancestry SNPs. Export the subset matrix as a VCF.
     """
-    
-    mt = mt.key_rows_by('locus', 'alleles') # key matrix columns for quick search
 
-    # load ancestry SNPs depending on the ref_gen
+    mt = mt.key_rows_by('locus', 'alleles')
+
+    # Load ancestry SNPs and parse variant string into locus+alleles
     ht_variants = hl.import_table(f"GrafAnc_SNPs/ancestry_SNPs_GrafAnc_{config['ref_gen']}",
-                                  delimiter='\t', impute=True, skip_blank_lines = True)
+                                  delimiter='\t', impute=True, skip_blank_lines=True)
 
-    ht_variants = ht_variants.key_by(**hl.parse_variant(ht_variants.ancestrySNPs)) #Convert variants in string format to separate locus and allele hail fields
-    ht_variants = ht_variants.key_by('locus', 'alleles')
+    ht_variants = ht_variants.annotate(
+        parsed=hl.parse_variant(ht_variants.ancestrySNPs)
+    )
+    ht_variants = ht_variants.annotate(
+        locus=ht_variants.parsed.locus,
+        alleles=ht_variants.parsed.alleles
+    )
 
-    # filter variants
-    ancestry_mt = mt.filter_rows(hl.is_defined(ht_variants[mt.locus, mt.alleles])) # filter_rows(to_keep)
-    ancestry_counts = ancestry_mt.count()
+    # Match on locus only (mirrors GrafAnc's ExtractAncSnpsFromVcfGz.pl logic — no allele check)
+    ht_locus_only = ht_variants.key_by('locus')
+    mt_locus_only = mt.key_rows_by('locus')
 
-    # apply HWE filter
-    ancestry_mt = hl.variant_qc(ancestry_mt)
-    pre_count = ancestry_mt.count_rows()
-    ancestry_mt = ancestry_mt.filter_rows(ancestry_mt.variant_qc.p_value_hwe > 1e-6)
-    post_count = ancestry_mt.count_rows()
-    logging.info(f"HWE filtering done - Variants removed: {pre_count - post_count}")
+    ancestry_mt = mt_locus_only.filter_rows(
+        hl.is_defined(ht_locus_only[mt_locus_only.locus])
+    )
+    ancestry_mt = ancestry_mt.key_rows_by('locus', 'alleles')  # restore key for VCF export
 
-    # export VCF
+    ancestry_counts = ancestry_mt.count_rows()
+    logging.info(f"SNPs matched on locus only: {ancestry_counts}")
+
+    # Export VCF
     mt_path = config['mt_afterQC'] if config['preprocessing'] else config['mt_from_vcf']
-    logging.info(f"There are {pre_count} ancestry SNPs in {mt_path}")
     ancestry_vcf = os.path.join(os.path.dirname(mt_path), "ancestrySNPs.vcf")
-    logging.info(f"Exporting ancestry matrix to {ancestry_vcf}")
+    logging.info(f"Exporting {ancestry_counts} ancestry SNPs to {ancestry_vcf}")
     hl.export_vcf(ancestry_mt, ancestry_vcf)
 
     summary = []
     summary.append([])
     summary.append(["Ancestry filtering"])
-    summary.append(["", "Before", "After", "Removed"])
-    summary.append(["HWE equilbrium", pre_count, post_count, pre_count-post_count])
-    summary.append(["Nº of ancestry SNPs", ancestry_counts[0]])
+    summary.append(["", "Count"])
+    summary.append(["Nº of ancestry SNPs", ancestry_counts])
     csv_writer(summary)
 
-    return ancestry_vcf, post_count
+    return ancestry_vcf, ancestry_counts
 
 def call_grafanc(ancestry_vcf, mt_path):
     """
@@ -67,7 +70,7 @@ def call_grafanc(ancestry_vcf, mt_path):
     name_only = os.path.splitext(basename)[0]   
     ancestry_results = os.path.join(os.path.dirname(mt_path), f"{name_only}-GrafAnc_results")
     logging.info(f"Running GrafAnc: $ grafanc {ancestry_vcf} {ancestry_results}")
-    os.system(f"grafanc {ancestry_vcf} {ancestry_results} --threads 4")
+    os.system(f"./grafanc {ancestry_vcf} {ancestry_results} --threads 4")
 
 
     try:

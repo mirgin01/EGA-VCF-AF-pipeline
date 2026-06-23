@@ -596,7 +596,7 @@ def create_stats(mt, field_path, aggregate):
         logging.error(f"Error calculating statistics for {field_path}: {e}")
         return None
 
-def verbosity_counts_variants(mt, filter_name, filter_step, summary, stats):
+"""def verbosity_counts_variants(mt, filter_name, filter_step, summary, stats):
     # filter_step is the REMOVAL condition, so survivors are where it's False or missing
     keep_expr = hl.is_missing(filter_step) | ~filter_step
     
@@ -606,6 +606,17 @@ def verbosity_counts_variants(mt, filter_name, filter_step, summary, stats):
     ))
     logging.info(f"{filter_name} filtering done - Variants removed: {repo_stats.total - repo_stats.passing}")
     summary.append([filter_name, repo_stats.total, repo_stats.passing, repo_stats.total - repo_stats.passing, stats])
+    return summary"""
+
+
+def verbosity_counts_variants(mt, filter_name, keep_condition, summary, stats):
+    repo_stats = mt.aggregate_rows(hl.struct(
+        total=hl.agg.count(),
+        passing=hl.agg.count_where(hl.or_else(keep_condition, False))
+    ))
+    removed = repo_stats.total - repo_stats.passing
+    logging.info(f"{filter_name} filtering done - Variants removed: {removed}")
+    summary.append([filter_name, repo_stats.total, repo_stats.passing, removed, stats])
     return summary
 
 def run_charr(mt, reference):
@@ -1089,6 +1100,153 @@ def plot_sample_qc_histograms(collected, thresholds, sequencingType, basename):
         plt.tight_layout()
         plt.savefig(f'{basename}_{metric}_histogram.png', dpi=150)
         plt.close()
+
+def apply_filter(mt, condition, metric_path, metric_name, summary):
+    """
+    Applies a single sample QC filter step.
+    :param mt: MatrixTable to filter
+    :param condition: Hail boolean expression for filtering
+    :param metric_path: string path to metric for create_stats e.g. "sample_qc.call_rate"
+    :param metric_name: display name for logging and summary e.g. "Call Rate"
+    :param summary: summary list to append results to
+    :return: filtered MatrixTable
+    """
+    repo_stats = mt.aggregate_cols(hl.struct(
+        total=hl.agg.count(),
+        passing=hl.agg.count_where(condition)
+    ))
+
+    if config['verbosity']:
+        stats = create_stats(mt, metric_path, "cols")
+        summary.append([metric_name, repo_stats.total, repo_stats.passing,
+                        repo_stats.total - repo_stats.passing, stats])
+
+    logging.info(f"{metric_name} filtering done - Samples removed: {repo_stats.total - repo_stats.passing}")
+    mt = mt.filter_cols(condition)
+    return mt
+
+def compute_mad_threshold(values, k=4.0, one_sided=None):
+    """
+    Computes MAD-based thresholds for a metric.
+    :param values: numpy array of metric values
+    :param k: MAD multiplier (gnomAD default = 4.0)
+    :param one_sided: None (two-sided), 'lower' (flag below only), 'upper' (flag above only)
+    :return: (lower, upper, median, mad)
+    """
+    median = float(np.median(values))
+    mad    = float(np.median(np.abs(values - median)))
+
+    # floor to avoid threshold collapse when MAD = 0
+    if mad == 0:
+        mad = 0.01 * abs(median) if median != 0 else 0.01
+
+    spread = k * mad
+    lower  = median - spread if one_sided != 'upper' else -np.inf
+    upper  = median + spread if one_sided != 'lower' else  np.inf
+
+    logging.info(f"MAD threshold | median={median:.4f}, MAD={mad:.4f}, "
+                 f"lower={lower:.4f}, upper={upper:.4f}")
+
+    return lower, upper, median, mad
+
+def collect_metrics(mt):
+    """
+    Collects all QC metrics from the MatrixTable to numpy arrays in one Hail action.
+    :param mt: MatrixTable after hl.sample_qc() and run_charr()
+    :return: dictionary of {metric_name: numpy array}
+    """
+    has_charr = 'charr' in mt.col
+    extra     = ['charr'] if has_charr else []
+    rows      = mt.cols().key_by().select('s', 'sample_qc', *extra).collect()
+
+    extractors = {
+        #'call_rate':     lambda r: r.sample_qc.call_rate,
+        'r_ti_tv':       lambda r: r.sample_qc.r_ti_tv,
+        'r_het_hom_var': lambda r: r.sample_qc.r_het_hom_var
+        #'n_singleton':   lambda r: r.sample_qc.n_singleton,
+        #'dp_stats_mean': lambda r: r.sample_qc.dp_stats.mean,
+        #'charr':         lambda r: r.charr if has_charr else None,
+    }
+
+    collected = {}
+    for key, extractor in extractors.items():
+        try:
+            vals = [float(extractor(r)) if extractor(r) is not None else np.nan for r in rows]
+            collected[key] = np.array(vals, dtype=float)
+            n_valid = int(np.sum(~np.isnan(collected[key])))
+            logging.info(f"Collected '{key}': {n_valid}/{len(rows)} valid values")
+        except Exception as e:
+            logging.warning(f"Could not collect metric '{key}': {e}")
+            collected[key] = np.full(len(rows), np.nan)
+
+    return collected
+
+def apply_mad_filter(mt, metric_key, hail_expr, metric_path, metric_name,
+                      summary, thresholds):
+    """
+    Applies a pre-computed MAD-based filter to the MatrixTable.
+    :param mt: MatrixTable to filter
+    :param metric_key: key to look up in thresholds dict e.g. 'call_rate'
+    :param hail_expr: Hail expression for the metric e.g. mt.sample_qc.call_rate
+    :param metric_path: string path for create_stats e.g. "sample_qc.call_rate"
+    :param metric_name: display name for logging and summary
+    :param summary: summary list to append results to
+    :param thresholds: dict of pre-computed thresholds from _compute_mad_threshold
+    :return: filtered MatrixTable
+    """
+    # Avoids breaking when metric is not in matrix 
+    if thresholds[metric_key] is None:
+        logging.warning(f"{metric_name} MAD filter skipped — threshold could not be computed")
+        return mt                  # return mt unchanged
+    
+    lower, upper, median, mad = thresholds[metric_key]
+
+    condition = (hail_expr >= lower) & (hail_expr <= upper)
+
+    logging.info(f"{metric_name} MAD filter | lower={lower:.4f}, upper={upper:.4f}")
+
+    mt = apply_filter(mt,
+                       condition=condition,
+                       metric_path=metric_path,
+                       metric_name=metric_name,
+                       summary=summary)
+    return mt
+
+
+def safe_mad_threshold(collected, key, k=4.0, one_sided=None):
+    """
+    Wraps _compute_mad_threshold with a NaN check.
+    Returns None if the metric is unavailable, threshold tuple otherwise.
+    """
+    values = collected.get(key)
+    if values is None:
+        logging.warning(f"MAD | '{key}' not found in collected metrics — skipping")
+        return None
+    
+    valid = values[~np.isnan(values)]
+    if len(valid) < 2:
+        logging.warning(f"MAD | '{key}' has fewer than 2 valid values — skipping")
+        return None
+
+    return compute_mad_threshold(valid, k=k, one_sided=one_sided)
+
+
+
+    """
+    Wraps _compute_mad_threshold with a NaN check.
+    Returns None if the metric is unavailable, threshold tuple otherwise.
+    """
+    values = collected.get(key)
+    if values is None:
+        logging.warning(f"MAD | '{key}' not found in collected metrics — skipping")
+        return None
+    
+    valid = values[~np.isnan(values)]
+    if len(valid) < 2:
+        logging.warning(f"MAD | '{key}' has fewer than 2 valid values — skipping")
+        return None
+
+    return _compute_mad_threshold(valid, k=k, one_sided=one_sided)
 
         
 """mt = hl.read_matrix_table(config['mt_from_vcf'])
