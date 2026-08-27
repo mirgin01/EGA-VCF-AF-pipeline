@@ -64,7 +64,6 @@ def main():
         if config['variant_filtering']:
             mt = variant_filtering(mt)
         if config['sample_filtering']:
-            # mt = mt.head(50000) # TODO delet after testing
             mt = sample_filtering_hard_thresholds(mt, config['seq_type'], basename)
             mt = sample_filtering_mad_thresholds(mt, config['seq_type'], basename)
                     

@@ -21,12 +21,12 @@
 ## Core paths and dataset-wide settings
 ## ============================================================
 
-vcf_dir: "input"
+vcf_dir: "input/converted/try"
 # Directory containing all input VCF files.
 # IMPORTANT: all VCFs must use the same reference genome.
 # Docker path: /data/input
 
-vcf_for_header: "input/GCAT-EGAD00001007774-af_annotated.vcf.bgz"
+vcf_for_header: "input/converted/try/subset20000.vcf.bgz"
 # Representative VCF used to build the final output VCF header.
 # TODO: ideally remove this and use one file automatically from vcf_dir.
 # Docker path: /data/input/filename.vcf.gz
@@ -46,15 +46,15 @@ seq_type: "WGS"
 ## Files produced by the pipeline
 ## ============================================================
 
-mt_from_vcf: "work/GCAT.mt"
+mt_from_vcf: "work/test.mt"
 # MatrixTable generated during preprocessing.
 # Docker path: /data/work/filename.mt
 
-mt_afterQC: "work/GCAT_afterQC.mt"
+mt_afterQC: "work/test_afterQC.mt"
 # MatrixTable after QC steps.
 # Docker path: /data/work/filename_afterQC.mt
 
-final_vcf_AF: "output/synthethic_afterHail.vcf.bgz"
+final_vcf_AF: "output/test_afterHail.vcf.bgz"
 # Final output VCF annotated with recalculated allele frequencies.
 # Only relevant when af_annotation = true.
 # Docker path: /data/output/your_output_name.vcf.bgz
@@ -79,7 +79,7 @@ use_allele_counts: true
 ## - infer_ancestry and submit_ancestry are mutually exclusive
 ## ============================================================
 
-preprocessing: true
+preprocessing: false
 # Runs preprocessing: VCF conversion, splitting, and initial filtering.
 
 infer_sex: false
@@ -194,12 +194,6 @@ sample_filters:
   CALL_RATE_threshold: 0.95
   # Minimum fraction of non-missing genotype calls per sample.
 
-  R_HET_HOM_VAR_WGS_threshold: 3.3
-  # Maximum heterozygous / homozygous-variant ratio for WGS.
-
-  R_HET_HOM_VAR_WES_threshold: 10
-  # Maximum heterozygous / homozygous-variant ratio for WES.
-
   N_SINGLETON_WGS_threshold: 100000
   # Maximum singleton count for WGS.
 
@@ -209,11 +203,11 @@ sample_filters:
   CHARR_threshold: #0.05
   # Contamination estimate threshold.
 
-  R_TI_TV_WES_threshold: [3.0, 3.3]
-  # Expected Ti/Tv ratio range for WES: [min, max].
+  R_TI_TV: false
+  # Expected Ti/Tv ratio. Thresholds calculated as 4 median absolute deviations from Ti/Tv ratio of the cohort.
 
-  R_TI_TV_WGS_threshold: [2.0, 2.1]
-  # Expected Ti/Tv ratio range for WGS: [min, max].
+  R_HET_HOM_VAR: true
+  # Maximum heterozygous / homozygous-variant ratio for WGS. Thresholds calculated as 4 median absolute deviations from het/hom ratio of the cohort.
 
 
 ## ============================================================

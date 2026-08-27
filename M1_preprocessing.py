@@ -512,7 +512,7 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename): # TODO Clean 
     Applies sample quality control using MAD-based thresholds following the gnomAD strategy.
     Thresholds are computed from the full dataset before any filtering is applied.
     :params: mt without sample qc
-    :return: mt with sample QCed
+    :return: mt with sample QCedCHARR_threshold
     """
 
     assert sequencingType in ["WES", "WGS"], "sequencingType must be 'WES' or 'WGS'"
@@ -544,30 +544,32 @@ def sample_filtering_mad_thresholds(mt, sequencingType, basename): # TODO Clean 
     }
     
     
-    # Ti/Tv ratio filtering
-    if "r_ti_tv" in mt.sample_qc:
-        mt = apply_mad_filter(mt,
-                               metric_key='r_ti_tv',
-                               hail_expr=mt.sample_qc.r_ti_tv,
-                               metric_path="sample_qc.r_ti_tv",
-                               metric_name="Ti/Tv ratio",
-                               summary=summary,
-                               thresholds=thresholds)
-    else:
-        logging.warning("Ti/Tv information not available - Ti/Tv filtering not performed")
+    if config['sample_filters']['R_TI_TV']:
+        # Ti/Tv ratio filtering
+        if "r_ti_tv" in mt.sample_qc:
+            mt = apply_mad_filter(mt,
+                                metric_key='r_ti_tv',
+                                hail_expr=mt.sample_qc.r_ti_tv,
+                                metric_path="sample_qc.r_ti_tv",
+                                metric_name="Ti/Tv ratio",
+                                summary=summary,
+                                thresholds=thresholds)
+        else:
+            logging.warning("Ti/Tv information not available - Ti/Tv filtering not performed")
 
 
     # Het/Hom ratio filtering
-    if "r_het_hom_var" in mt.sample_qc:
-        mt = apply_mad_filter(mt,
-                               metric_key='r_het_hom_var',
-                               hail_expr=mt.sample_qc.r_het_hom_var,
-                               metric_path="sample_qc.r_het_hom_var",
-                               metric_name="Het/Hom ratio",
-                               summary=summary,
-                               thresholds=thresholds)
-    else:
-        logging.warning("Het/Hom information not available - Het/Hom filtering not performed")
+    if config['sample_filters']['R_HET_HOM_VAR']:
+        if "r_het_hom_var" in mt.sample_qc:
+            mt = apply_mad_filter(mt,
+                                metric_key='r_het_hom_var',
+                                hail_expr=mt.sample_qc.r_het_hom_var,
+                                metric_path="sample_qc.r_het_hom_var",
+                                metric_name="Het/Hom ratio",
+                                summary=summary,
+                                thresholds=thresholds)
+        else:
+            logging.warning("Het/Hom information not available - Het/Hom filtering not performed")
 
     if config['verbosity']:
         csv_writer(summary)

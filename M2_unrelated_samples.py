@@ -75,21 +75,26 @@ def find_high_kin_score(mt):
     Returns a Hail table with one row per pair.
     """
     logging.info("Running KING")
-    king_ht = hl.king(mt.GT)
+    # hl.king returns a MatrixTable:
+    king_mt = hl.king(mt.GT)
+
+    # Convert pairwise MatrixTable to a Table
+    king_ht = king_mt.entries()
 
     # Keep only very high kinship pairs
     high_kinship = king_ht.filter(king_ht.phi > 0.45)
 
-    # Convert to row table
-    high_kinship_table = high_kinship.entries()
-
     # Remove self-comparisons
-    high_kinship_table = high_kinship_table.filter(high_kinship_table.s_1 != high_kinship_table.s)
+    high_kinship = high_kinship.filter(
+        high_kinship.s_1 != high_kinship.s
+    )
 
-    # Remove duplicated symmetric pairs (A-B and B-A), keep only one
-    high_kinship_table = high_kinship_table.filter(high_kinship_table.s_1 < high_kinship_table.s)
+    # Remove symmetric duplicates
+    high_kinship = high_kinship.filter(
+        high_kinship.s_1 < high_kinship.s
+    )
 
-    return high_kinship_table
+    return high_kinship
 
 def append_king_results_to_file(twins_table):
     """
@@ -102,7 +107,6 @@ def append_king_results_to_file(twins_table):
         for row in rows:
             f.write(f"{row.s_1}\t{row.s}\t{row.phi}\tKING\n")
 
-    logging.info(f"KING-related samples saved in: {out_file}")
 
 def delete_related_indv(mt, mt_filtered):
     """
@@ -143,7 +147,7 @@ def delete_related_indv(mt, mt_filtered):
             sample_id = sample.node.s
             f.write(f"{sample_id}\t-\t-\tPC_relate\n")
 
-    logging.info(f"PC-relate-related samples saved in: {out_file}")
+    logging.info(f"Related samples removed saved in: {out_file}")
 
     mt = mt.filter_cols(hl.is_defined(related_samples_to_remove[mt.col_key]), keep=False)
 

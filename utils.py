@@ -1144,9 +1144,6 @@ def compute_mad_threshold(values, k=4.0, one_sided=None):
     lower  = median - spread if one_sided != 'upper' else -np.inf
     upper  = median + spread if one_sided != 'lower' else  np.inf
 
-    logging.info(f"MAD threshold | median={median:.4f}, MAD={mad:.4f}, "
-                 f"lower={lower:.4f}, upper={upper:.4f}")
-
     return lower, upper, median, mad
 
 def collect_metrics(mt):
